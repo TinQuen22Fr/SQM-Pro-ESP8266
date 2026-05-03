@@ -1,0 +1,26 @@
+# Arduino IDE build artifacts
+build/
+*.bin
+*.elf
+*.hex
+*.map
+*.d
+*.o
+*.a
+
+# Arduino IDE 2 internal folders
+.vscode/
+.theia/
+
+# macOS
+.DS_Store
+
+# Linux
+*~
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# User-specific secrets (uncomment if you keep a local copy outside the repo)
+#SQM_pro/secrets.h
