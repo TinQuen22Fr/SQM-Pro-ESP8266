@@ -166,6 +166,55 @@ ESP8266 à 10 bits, non linéaire en bord de plage). Idées :
 
 ---
 
+---
+
+## 🔧 Fix `SERIAL_BAUD` 74880 → 115200 pour compatibilité UDM (Unihedron Device Manager)
+
+> **Identifié le 04/05/2026** — à valider/appliquer plus tard.
+
+### Problème
+
+Le firmware utilise actuellement `#define SERIAL_BAUD 74880` (rate de debug ESP8266
+pour capturer les messages de boot natifs). Conséquence : le **logiciel UDM
+(Unihedron Device Manager) ne peut pas dialoguer** avec le capteur en mode USB.
+
+UDM (et les autres logiciels SQM) attendent **115200 8N1**, conformément aux
+specs des modules Unihedron SQM-LU (USB) et SQM-LR (RS232).
+
+### Fix (1 ligne)
+
+Dans `Config.h` :
+
+```cpp
+// AVANT
+#define SERIAL_BAUD 74880
+
+// APRÈS (Unihedron-compatible)
+#define SERIAL_BAUD 115200
+```
+
+### Conséquences
+
+- ✅ UDM devrait fonctionner immédiatement (commandes `i`, `r`, `u`, `w`,
+  `g`, `z…`, `A5…` reconnues par le firmware en mode USB Unihedron).
+- ⚠️ Les messages de boot ESP8266 restent émis à 74880 par le hardware.
+  Vous ne pourrez plus les lire dans le moniteur série après le passage à
+  115200 (sauf à rouvrir temporairement le moniteur à 74880 pour debug).
+- Aucun impact sur le mode normal Wi-Fi (le push HTTPS n'utilise pas le
+  port série).
+
+### Validation
+
+Après modification :
+1. Reflasher (USB ou OTA).
+2. Lancer UDM, sélectionner le port USB du NodeMCU à **115200 8N1**.
+3. Mettre l'interrupteur de façade en position **côté D5** (mode USB
+   Unihedron).
+4. UDM devrait répondre à la commande "Detect" et afficher
+   les mesures TSL2591 + BME280 (version de protocole = SQM-LU).
+
+---
+
 ## 📡 LoRa / Sigfox au lieu de Wi-Fi
 
 Pour des capteurs en site **vraiment** isolé (montagne, désert), un
@@ -178,3 +227,4 @@ un projet sœur que ce firmware.
 ---
 
 *Dernière mise à jour : 04/05/2026*
+
