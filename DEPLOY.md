@@ -224,16 +224,35 @@ rafraîchissement du dashboard).
 
 ## 8. Modes de fonctionnement
 
-Le bouton **Mode** (GPIO2) bascule entre deux modes :
+L'**interrupteur de façade** du SQM Pro est un **interrupteur SPDT
+3 positions center-off** câblé ainsi :
+- Plot central : **GND**
+- Plot 1 : **D3 (GPIO0)**
+- Plot 2 : **D5 (GPIO14)**
 
-| Bouton   | Mode               | Comportement                                            |
-|----------|--------------------|---------------------------------------------------------|
-| Relâché  | **Normal**         | OLED actif + envoi HTTPS toutes les ~10 s au dashboard  |
-| Pressé   | **USB / Unihedron**| Réponses au protocole série Unihedron-compatible        |
+Selon sa position, le firmware (et le bootloader ESP) bascule entre
+trois comportements :
 
-Commandes USB supportées : `i` (info), `r` (reading), `u` (unaveraged),
-`w` (extended + weather), `g` (config), `z…` (calibration), `A5…`
-(contraste/dimmer). Détails dans `SQM_pro.ino`.
+| Position interrupteur | État GPIO0 (D3) | État GPIO14 (D5) | Mode actif |
+|---|---|---|---|
+| **Centre** (par défaut) | HIGH (pull-up) | HIGH (pull-up) | 🌌 **Mode normal** : OLED + push HTTPS toutes les ~10 s au dashboard SQM Nightwatch |
+| Côté **D5** | HIGH | LOW | 🔌 **Mode USB Unihedron** : protocole série compatible SQM-LE (commandes `i`, `r`, `u`, `w`, `g`, `z…`, `A5…`) |
+| Côté **D3** *(au démarrage)* | LOW | HIGH | ⚡ **Mode flash** : l'ESP8266 entre en mode téléversement firmware (USB) — pour reflasher sans toucher Arduino IDE |
+
+> 💡 Le mode flash est géré par le **bootloader ESP8266 lui-même**
+> (lecture de GPIO0 au reset). Le firmware ne lit donc **que GPIO14**
+> pour distinguer mode normal ↔ mode USB Unihedron.
+
+> ⚠️ **Au démarrage, mettez l'interrupteur en CENTRE ou côté D5.**
+> Si vous démarrez en position D3, l'ESP entre en mode flash et
+> l'OLED reste éteint — ce qui peut surprendre. Il suffit alors de
+> repositionner l'interrupteur (centre ou D5) et d'appuyer sur le
+> bouton **RESET**.
+
+Commandes USB Unihedron supportées : `i` (info unité), `r` (reading),
+`u` (unaveraged), `w` (extended weather, étendu non standard),
+`g` (config), `z…` (calibration), `A5…` (contraste/dimmer OLED).
+Détails dans `SQM_pro.ino`.
 
 ---
 

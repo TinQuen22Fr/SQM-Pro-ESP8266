@@ -46,15 +46,17 @@ Schéma de câblage / PCB : <https://easyeda.com/hujer.roman/sqm-hr>.
    GND ────────────────┤ GND                              GND ├──┤
                        │                                       │  │
    Bus I²C  ╔══════════╡ D2 (GPIO4 = SDA)            (GPIO16) D0╞══╗
-            ║          │ D1 (GPIO5 = SCL)─────────────╮         │  ║   ┌──── 470 Ω ──┐
-            ║          │                              │         │  ║   │             │
-            ║          │ D7 (GPIO13 = RX SoftSerial)──┼──> GPS  │  ║   │             ▼
-            ║          │ D8 (GPIO15 = TX SoftSerial)──┼──> GPS  │  ║   │            RST
-            ║          │                              │         │  ║   │             ▲
-            ║          │ D4 (GPIO2  = ModePin) ◄── bouton ↓ GND │  ║   │  (deep-sleep wake-up:
-            ║          │ D6 (GPIO12 = BuzzerPin) ──> buzzer     │  ║   │   GPIO16 → RST,
-            ║          │                                        │  ║   │   470 Ω optionnel)
-            ║          │ A0 ◄── pont diviseur ÷11 ── batterie + │  ╚═══╛
+            ║          │ D1 (GPIO5 = SCL)                     │  ║   ┌──── 470 Ω ──┐
+            ║          │                                      │  ║   │             │
+            ║          │ D3 (GPIO0)  ◄──┐  Inter. 3 positions │  ║   │             ▼
+            ║          │ D5 (GPIO14) ◄──┤  centre-off (façade)│  ║   │            RST
+            ║          │                ├── centre = GND      │  ║   │             ▲
+            ║          │                                      │  ║   │  (deep-sleep wake-up:
+            ║          │ D4 (GPIO2 = RX SoftSerial) ──> GPS TXD│  ║   │   GPIO16 → RST,
+            ║          │ D7 (GPIO13 = TX SoftSerial) ──> GPS RXD│ ║   │   470 Ω optionnel)
+            ║          │ D6 (GPIO12 = BuzzerPin) ──> buzzer +  │  ║   │
+            ║          │                                      │  ╚═══╛
+            ║          │ A0 ◄── pont diviseur ÷11 ── batterie + │
             ║          └────────────────────────────────────────┘
             ║
             ║          ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
@@ -73,9 +75,15 @@ Schéma de câblage / PCB : <https://easyeda.com/hujer.roman/sqm-hr>.
              ~4,7 kΩ en général déjà présentes sur les modules breakout).
 
    GPS NEO-6M (alimenté en 3,3 V) :
-       NodeMCU D7 (RX) ──── GPS TX
-       NodeMCU D8 (TX) ──── GPS RX
+       GPS TXD ─── NodeMCU D4 (GPIO2)  → NodeMCU reçoit les trames NMEA
+       GPS RXD ─── NodeMCU D7 (GPIO13) → NodeMCU envoie commandes au GPS
        3V3 / GND
+
+   Interrupteur de façade (SPDT 3 positions center-off) :
+       Plot central       ── GND
+       Plot D3 (GPIO0)    ── NodeMCU D3   (mode flash USB au boot)
+       Plot D5 (GPIO14)   ── NodeMCU D5   (mode Unihedron USB en runtime)
+       Centre             ── pas de connexion → mode normal Wi-Fi (par défaut)
 
    ⚠️  Pour activer le mode deep-sleep (cf. DEEP_SLEEP_ON dans Config.h),
        il FAUT relier physiquement GPIO16 (D0) à RST avec une résistance
@@ -83,8 +91,8 @@ Schéma de câblage / PCB : <https://easyeda.com/hujer.roman/sqm-hr>.
        réveillera jamais.
 ```
 
-> 💡 Toutes les broches I²C indiquées (SDA = D2/GPIO4, SCL = D1/GPIO5)
-> sont les broches I²C matérielles par défaut sur NodeMCU.
+> 💡 SDA = D2/GPIO4, SCL = D1/GPIO5 sont les broches I²C **matérielles**
+> par défaut sur NodeMCU (ne pas modifier).
 
 ---
 

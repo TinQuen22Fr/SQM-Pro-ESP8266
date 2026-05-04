@@ -5,6 +5,31 @@ Tous les changements notables de ce projet sont documentés dans ce fichier.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ;
 le projet suit le [versionnage sémantique](https://semver.org/lang/fr/).
 
+## [v2.2.1] — 2026-05-04
+
+### Corrigé
+- 🔧 **Brochage NodeMCU corrigé** pour matcher le câblage réel du SQM Pro
+  PCB (Quentin Dumont / Roman Hujer) :
+  - `ModePin` : **GPIO2 (D4) → GPIO14 (D5)**. Lit l'interrupteur de
+    façade côté Unihedron USB. GPIO2 (D4) reste libre pour le GPS.
+  - `gpsSerial` : **(13, 15) → (2, 13)**. NodeMCU reçoit le NMEA du GPS
+    sur GPIO2 (D4 = GPS TXD), envoie sur GPIO13 (D7 = GPS RXD).
+  - `BuzzerPin` : inchangé, GPIO12 (D6).
+
+### Documentation
+- 📄 `Setup.h` réécrit avec un **tableau ASCII complet du brochage**
+  NodeMCU (broche / GPIO / usage / notes) et explication des pièges
+  GPIO0 (boot strap), GPIO2 (LED + Serial1 boot TX), GPIO15
+  (boot strap pull-down).
+- 📄 `DEPLOY.md` §8 « Modes de fonctionnement » entièrement réécrite
+  pour expliquer l'interrupteur SPDT 3 positions center-off :
+  centre = mode normal, côté D5 = mode Unihedron USB, côté D3 au
+  boot = mode flash USB.
+- 📄 `README.md` schéma de câblage ASCII mis à jour avec les bonnes
+  broches et la nouvelle représentation de l'interrupteur 3 positions.
+
+---
+
 ## [v2.2.0] — 2026-05-04
 
 ### Ajouté

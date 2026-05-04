@@ -27,7 +27,7 @@
 
     Wiring diagram / PCB: https://easyeda.com/hujer.roman/sqm-hr
 */
-#define Version       "2.2.0"
+#define Version       "2.2.1"
 #define SERIAL_NUMBER "20200604"
 
 #include "Config.h"
@@ -46,7 +46,10 @@
   #include <SoftwareSerial.h>
   #include "TinyGPS++.h"
   TinyGPSPlus gps;
-  SoftwareSerial gpsSerial(13, 15);
+  // SoftwareSerial gpsSerial(rxPin, txPin):
+  //   rxPin = GPIO2 (D4) - NodeMCU RX,  receives NMEA from GPS NEO-6 TXD
+  //   txPin = GPIO13 (D7) - NodeMCU TX, sends commands to GPS NEO-6 RXD
+  SoftwareSerial gpsSerial(2, 13);
 #endif
 #ifdef OTA_ON
   #include <ArduinoOTA.h>
