@@ -5,6 +5,25 @@ Tous les changements notables de ce projet sont documentés dans ce fichier.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ;
 le projet suit le [versionnage sémantique](https://semver.org/lang/fr/).
 
+## [v2.1.2] — 2026-05-04
+
+### Corrigé
+- 🐛 **Oscillation OLED entre "Wait USB data" et la page mesures sur
+  NodeMCU nu** (sans la PCB SQM-HR d'origine de Roman Hujer).
+  GPIO2 = ModePin est aussi attaché à la LED bleue intégrée et à
+  Serial1 TX du boot, donc la broche flappe en permanence et le
+  firmware bascule sans cesse entre mode normal et mode USB.
+- ➕ Nouveau flag `USB_MODE_OFF` (par défaut) qui ignore complètement
+  ModePin et force le mode normal. Les utilisateurs de la PCB
+  d'origine peuvent rétablir le comportement legacy avec
+  `#define USB_MODE_ON`.
+
+### Documentation
+- 📄 `DEPLOY.md` §9 Dépannage : nouvelle entrée pour ce symptôme avec
+  la solution.
+
+---
+
 ## [v2.1.1] — 2026-05-04
 
 ### Modifié

@@ -127,6 +127,26 @@ const char* ota_password = "changeme-ota-password";
 #define SLEEP_SEC 300 // 5 minutes
 
 // -----------------------------------------------------------------------------
+// USB / Unihedron mode
+// -----------------------------------------------------------------------------
+// The SQM-HR PCB by Roman Hujer has a dedicated button wired to ModePin (GPIO2)
+// that lets the user toggle between:
+//   - Normal mode   (button NOT pressed): OLED + Wi-Fi push
+//   - USB mode      (button     pressed): Unihedron-compatible serial protocol
+//                                         (commands i, r, u, w, g, z..., A5...)
+//
+// On a bare NodeMCU without that PCB, GPIO2 is also tied to the on-board blue
+// LED and to Serial1 TX during boot. The pin therefore flaps between LOW and
+// HIGH on its own, making the OLED oscillate between the "Wait USB data" page
+// and the measurement page. Set USB_MODE_OFF in this case.
+//
+// USB_MODE_ON  -> read ModePin every loop and switch between modes (PCB users)
+// USB_MODE_OFF -> ModePin is ignored, firmware always runs in normal mode
+//                 (recommended for bare NodeMCU / breadboard prototypes)
+#define USB_MODE_OFF
+// #define USB_MODE_ON
+
+// -----------------------------------------------------------------------------
 // OLED display - select ONLY ONE
 // -----------------------------------------------------------------------------
 #define SH1106_ON

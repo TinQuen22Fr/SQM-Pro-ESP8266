@@ -27,7 +27,7 @@
 
     Wiring diagram / PCB: https://easyeda.com/hujer.roman/sqm-hr
 */
-#define Version       "2.1.1"
+#define Version       "2.1.2"
 #define SERIAL_NUMBER "20200604"
 
 #include "Config.h"
@@ -253,6 +253,11 @@ void loop() {
     if (!USBmodeON) buzzer(200);
     USBmodeON = true;
   }
+#ifdef USB_MODE_OFF
+  // Force normal mode on bare NodeMCU (GPIO2 is unreliable without the
+  // SQM-HR PCB). The whole USB / Unihedron block below is bypassed.
+  USBmodeON = false;
+#endif
 
   if (!USBmodeON) {
     // -------------------------------------------------------------------------
