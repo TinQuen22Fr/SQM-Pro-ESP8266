@@ -36,6 +36,56 @@ de bord **[SQM Nightwatch](https://sqm.quentin-astro.fr)**
 
 Schéma de câblage / PCB : <https://easyeda.com/hujer.roman/sqm-hr>.
 
+### Schéma de câblage simplifié
+
+```
+                       ┌───────────────────────────────────────┐
+                       │           NodeMCU ESP-12E             │
+                       │                                       │
+   +5V ────────────────┤ Vin                              3V3 ├──┬──── 3,3 V (capteurs)
+   GND ────────────────┤ GND                              GND ├──┤
+                       │                                       │  │
+   Bus I²C  ╔══════════╡ D2 (GPIO4 = SDA)            (GPIO16) D0╞══╗
+            ║          │ D1 (GPIO5 = SCL)─────────────╮         │  ║   ┌──── 470 Ω ──┐
+            ║          │                              │         │  ║   │             │
+            ║          │ D7 (GPIO13 = RX SoftSerial)──┼──> GPS  │  ║   │             ▼
+            ║          │ D8 (GPIO15 = TX SoftSerial)──┼──> GPS  │  ║   │            RST
+            ║          │                              │         │  ║   │             ▲
+            ║          │ D4 (GPIO2  = ModePin) ◄── bouton ↓ GND │  ║   │  (deep-sleep wake-up:
+            ║          │ D6 (GPIO12 = BuzzerPin) ──> buzzer     │  ║   │   GPIO16 → RST,
+            ║          │                                        │  ║   │   470 Ω optionnel)
+            ║          │ A0 ◄── pont diviseur ÷11 ── batterie + │  ╚═══╛
+            ║          └────────────────────────────────────────┘
+            ║
+            ║          ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+            ║          │   TSL2591   │    │   BME280    │    │  OLED 0,96/ │
+            ║          │   (0x29)    │    │ (0x76/0x77) │    │  1,3" I²C    │
+            ╠══SDA═════╡ SDA         │    │ SDA         │    │ SDA         │
+            ╠══SCL═════╡ SCL         │    │ SCL         │    │ SCL         │
+            ║          │ VIN ── 3V3  │    │ VIN ── 3V3  │    │ VCC ── 3V3  │
+            ║          │ GND ── GND  │    │ GND ── GND  │    │ GND ── GND  │
+            ║          │             │    │ CSB ── 3V3  │    │             │
+            ║          │             │    │ SDO ── GND  │    │             │
+            ║          │             │    │   (=> 0x76) │    │             │
+                       └─────────────┘    └─────────────┘    └─────────────┘
+
+   Bus I²C : 4 fils communs SDA + SCL + 3,3 V + GND (résistances pull-up
+             ~4,7 kΩ en général déjà présentes sur les modules breakout).
+
+   GPS NEO-6M (alimenté en 3,3 V) :
+       NodeMCU D7 (RX) ──── GPS TX
+       NodeMCU D8 (TX) ──── GPS RX
+       3V3 / GND
+
+   ⚠️  Pour activer le mode deep-sleep (cf. DEEP_SLEEP_ON dans Config.h),
+       il FAUT relier physiquement GPIO16 (D0) à RST avec une résistance
+       de 470 Ω en série (ou un Schottky), sinon le NodeMCU ne se
+       réveillera jamais.
+```
+
+> 💡 Toutes les broches I²C indiquées (SDA = D2/GPIO4, SCL = D1/GPIO5)
+> sont les broches I²C matérielles par défaut sur NodeMCU.
+
 ---
 
 ## 2. Configuration de l'IDE Arduino
@@ -148,6 +198,18 @@ Implémente le protocole série compatible Unihedron (`i`, `r`, `u`,
 3. Page mesures : date/heure UT, magnitude, température, humidité,
    pression, altitude, nombre de satellites, latitude/longitude
 4. Page d'attente (GPS pas encore verrouillé / mode USB)
+5. Page OTA : barre de progression pendant un téléversement réseau
+
+### Modes de mise à jour et d'alimentation
+
+| Réglage `Config.h`               | Comportement                                                                       |
+|----------------------------------|------------------------------------------------------------------------------------|
+| `OTA_ON` (par défaut)            | Le NodeMCU est joignable par Arduino IDE en réseau pour reflash sans câble USB.   |
+| `DEEP_SLEEP_ON` (optionnel)      | Mode batterie longue durée : ~20 µA en sommeil, autonomie typique ~30 j sur 2000 mAh. |
+
+> 🔌 **OTA** et **deep-sleep** sont incompatibles : voyez
+> **[DEPLOY.md §10.2 & §11](./DEPLOY.md)** pour les détails et le
+> câblage GPIO16-RST nécessaire au réveil.
 
 ---
 
@@ -158,16 +220,18 @@ Implémente le protocole série compatible Unihedron (`i`, `r`, `u`,
 ├── LICENSE
 ├── README.md
 ├── DEPLOY.md            ← guide de déploiement détaillé
+├── CHANGELOG.md         ← historique des versions
 ├── .gitignore
 └── SQM_pro/
     ├── SQM_pro.ino       ← croquis principal (setup + loop + protocole USB)
-    ├── Config.h          ← configuration utilisateur (Wi-Fi, SensorID, clé, ...)
+    ├── Config.h          ← configuration utilisateur (Wi-Fi, SensorID, clé, OTA, deep-sleep)
     ├── Setup.h           ← brochage matériel / adresse I²C BME / police OLED
     ├── Validate.h        ← contrôles à la compilation
     ├── EEPROM.ino        ← persistance des calibrations et réglages d'affichage
     ├── GPS.ino           ← helpers NEO-6
     ├── MyLib.ino         ← pages OLED + lecture BME280 + buzzer
     ├── WiFi.ino          ← Wi-Fi STA + envoi HTTPS vers /api/sqm_push
+    ├── OTA.ino           ← support OTA (Over-The-Air firmware update)
     ├── SQM_TSL2591.h     ← pilote TSL2591 (en-tête)
     └── SQM_TSL2591.cpp   ← pilote TSL2591 (implémentation)
 ```

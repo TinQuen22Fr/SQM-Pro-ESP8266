@@ -195,19 +195,123 @@ Activez le debug complet en mettant dans `Config.h` :
 
 ## 10. Mise à jour du firmware
 
+### 10.1. Avec un câble USB
+
 ```bash
 cd SQM-Pro-ESP8266
 git pull
 # puis re-upload depuis Arduino IDE
 ```
 
-Pour une future OTA (Over-The-Air) sans câble USB, ajoutez
-`ArduinoOTA.begin()` dans `setup()` et lancez `ArduinoOTA.handle()` dans
-`loop()`. L'ESP8266 annoncera alors un port réseau dans *Outils → Port*.
+### 10.2. Sans câble (OTA — Over-The-Air) ✨
+
+Le firmware embarque le support OTA. Une fois flashé avec `OTA_ON`
+défini dans `Config.h`, votre NodeMCU apparaît automatiquement dans
+*Outils → Port* sous la forme :
+
+```
+Network ports
+  sqm-pro-001 at 192.168.x.y (Generic ESP8266 module)
+```
+
+Pour pousser une nouvelle version :
+
+1. Sélectionner le port réseau `sqm-pro-001 at …`.
+2. *Croquis → Téléverser*.
+3. Arduino IDE demande le mot de passe : c'est `ota_password` (à
+   personnaliser dans `Config.h`).
+4. Pendant l'upload, l'OLED affiche *OTA Update / Do NOT unplug! / xx %*.
+5. À la fin, le NodeMCU émet un bip et redémarre tout seul.
+
+> 🔐 **Sécurité** : OTA n'est joignable que sur le LAN où tourne le
+> NodeMCU. Changez impérativement `ota_password` (24 caractères
+> aléatoires recommandés) avant tout déploiement réel.
+
+> ⚠️ **Si vous activez `DEEP_SLEEP_ON`**, l'OTA devient quasiment
+> inutilisable car la radio Wi-Fi est éteinte la plupart du temps. Pour
+> mettre à jour un capteur en deep-sleep, il y a deux options :
+>
+> 1. Re-flasher temporairement avec `DEEP_SLEEP_OFF` (USB), pousser la
+>    nouvelle version par OTA puis remettre `DEEP_SLEEP_ON`.
+> 2. Garder l'USB branché : pendant la fenêtre où le chip est éveillé
+>    (~10 s par cycle de `SLEEP_SEC`), Arduino IDE peut joindre l'OTA
+>    si le délai d'attente est augmenté — peu pratique.
 
 ---
 
-## 11. Sécurité
+## 11. Mode batterie longue durée (deep-sleep) 🌙
+
+Le firmware peut faire passer le NodeMCU en deep-sleep entre deux
+mesures pour fonctionner sur batterie pendant plusieurs jours.
+
+### 11.1. Modification matérielle requise
+
+⚠️ **Sans cette modification, le NodeMCU ne se réveillera jamais.**
+
+Reliez **GPIO16 (broche D0)** au signal **RST** du module ESP8266 avec
+une **résistance de 470 Ω en série** (ou une diode Schottky en
+inverse) :
+
+```
+   D0 (GPIO16) ──[ 470 Ω ]── RST
+```
+
+La résistance/diode permet au programmeur USB de continuer à tirer RST
+à la masse pour reflasher le module.
+
+### 11.2. Activer le mode deep-sleep
+
+Dans `Config.h` :
+
+```cpp
+// #define DEEP_SLEEP_OFF       // (commentez cette ligne)
+#define DEEP_SLEEP_ON           // décommentez celle-ci
+
+#define SLEEP_SEC 300           // 5 minutes entre deux pushs (300 s)
+```
+
+Et **commentez** `OTA_ON` (la radio sera éteinte la plupart du temps,
+l'OTA est inutile) :
+
+```cpp
+// #define OTA_ON
+```
+
+Reflashez le NodeMCU une dernière fois en USB.
+
+### 11.3. Comportement
+
+À chaque réveil :
+
+1. Wi-Fi se connecte (~3-10 s)
+2. Le firmware tente d'avoir un fix GPS (5 s, best-effort)
+3. Mesure TSL2591 + BME280
+4. Push HTTPS vers `/api/sqm_push`
+5. `ESP.deepSleep(SLEEP_SEC * 1e6)` — chip à ~20 µA pendant `SLEEP_SEC`
+
+Pendant le sommeil :
+- L'OLED est éteint
+- Le bouton mode est ignoré
+- L'OTA est inactive
+
+### 11.4. Autonomie indicative
+
+Avec une batterie LiPo 3,7 V / 2000 mAh et `SLEEP_SEC = 300` :
+
+| Phase                    | Durée    | Courant moyen |
+|--------------------------|----------|---------------|
+| Réveil + Wi-Fi + push    | ~10 s    | ~80 mA        |
+| Deep-sleep               | ~290 s   | ~20 µA        |
+
+**Consommation moyenne ≈ 2,7 mA** → autonomie théorique ≈ **30 jours**
+(à dériver selon T° ambiante, vieillissement de la batterie, etc.).
+
+Si vous voulez plus d'autonomie, augmentez `SLEEP_SEC` (par ex. 900 =
+15 minutes ⇒ ~3 mois).
+
+---
+
+## 12. Sécurité
 
 - **Ne commitez jamais** votre vraie `sensor_key` sur un dépôt public.
   Pour cela, créez un fichier `SQM_pro/secrets.h` local :
@@ -233,7 +337,7 @@ Pour une future OTA (Over-The-Air) sans câble USB, ajoutez
 
 ---
 
-## 12. Références
+## 13. Références
 
 - API magnitude-tracker : <https://sqm.quentin-astro.fr>
 - Endpoint ingestion : `POST|GET /api/sqm_push`

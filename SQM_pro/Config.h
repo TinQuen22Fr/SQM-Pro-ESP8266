@@ -27,13 +27,12 @@
 // -----------------------------------------------------------------------------
 // WiFi / Cloud upload to SQM Nightwatch (magnitude-tracker)
 // -----------------------------------------------------------------------------
-// Enable cloud upload
 #define WIFI_ON
 
 // Backend endpoint (HTTPS is mandatory: the server redirects HTTP -> HTTPS)
 const char* host = "sqm.quentin-astro.fr";
-String app = "/api/sqm_push";   // ingestion endpoint on the backend
-#define HTTP_PORT 443            // HTTPS
+String app = "/api/sqm_push";
+#define HTTP_PORT 443
 
 // WiFi credentials (primary)
 const char* ssid     = "AstroHR";
@@ -48,25 +47,64 @@ const char* password2 = "Hujer.I.0.T";
 // Sensor identity
 // -----------------------------------------------------------------------------
 // Unique identifier for this SQM device on the backend.
-// The backend accepts any ID (SQM-001, SQM-002, ...) so several devices
-// can push to the same API key; they will be stored under distinct device_id.
-const char* SensorID = "SQM-001";
-
-// API key generated from the "Configuration" tab of the SQM Nightwatch dashboard
-// It is sent both as a query-string parameter (KEY=...) for GET
-// and as a header (X-API-Key: ...) for POST.
+const char* SensorID   = "SQM-001";
 const char* sensor_key = "mhRddaq4R-3_P1ony-mFz0xD-YJ_sktmiB5N-e2nfIs";
+
+// -----------------------------------------------------------------------------
+// OTA (Over-The-Air firmware update)
+// -----------------------------------------------------------------------------
+// When enabled, the device advertises itself on the local Wi-Fi network and
+// a new firmware can be uploaded from Arduino IDE without USB cable
+// (Tools -> Port -> network port "sqm-pro-XXX at 192.168.x.x").
+//
+// IMPORTANT: OTA is incompatible with DEEP_SLEEP_ON because the chip is
+// off most of the time. If you enable deep-sleep, comment OTA_ON below.
+#define OTA_ON
+
+// Hostname advertised on the local network (mDNS / Bonjour).
+// Set a unique value per physical device, e.g. "sqm-pro-001", "sqm-pro-002".
+const char* ota_hostname = "sqm-pro-001";
+
+// Password required by Arduino IDE before pushing a new firmware over OTA.
+// CHANGE THIS to a secret value before flashing!
+const char* ota_password = "changeme-ota-password";
+
+// -----------------------------------------------------------------------------
+// Deep-sleep (battery-powered, low-power operation)
+// -----------------------------------------------------------------------------
+// When DEEP_SLEEP_ON is defined, every loop iteration:
+//   1) connects Wi-Fi,
+//   2) takes ONE measurement (TSL2591 + BME280 + GPS-best-effort),
+//   3) pushes it to the backend,
+//   4) calls ESP.deepSleep(SLEEP_SEC * 1e6) -> chip is off ~20 uA.
+//
+// HARDWARE REQUIREMENT: GPIO16 (NodeMCU pin D0) MUST be wired to the RST
+// pin so the deep-sleep timer can reset the chip. Without this wire, the
+// chip will sleep but never wake up. Use a 470 ohm resistor (or a Schottky
+// diode) in series so the USB programmer can still hold RST low.
+//
+// CONSEQUENCES (when DEEP_SLEEP_ON is enabled):
+//   - OTA is NOT available (chip is off most of the time)
+//   - The OLED display is essentially useless (visible only ~10 s per cycle)
+//   - The USB / Unihedron serial mode is bypassed
+//   - GPS lock-time is limited (cold start may yield no fix)
+//
+// Default: disabled (continuous mode, mains-powered, OLED active, OTA on).
+#define DEEP_SLEEP_OFF
+// #define DEEP_SLEEP_ON   // uncomment for battery-powered unattended operation
 
 // -----------------------------------------------------------------------------
 // Reporting cadence
 // -----------------------------------------------------------------------------
-#define SLEEP_SEC 300 // Reserved for future use (deep-sleep scenarios)
+// Used by deep-sleep mode (sleep duration in seconds between two pushes).
+// Continuous mode pushes every ~10 s regardless of this value.
+#define SLEEP_SEC 300 // 5 minutes
 
 // -----------------------------------------------------------------------------
 // OLED display - select ONLY ONE
 // -----------------------------------------------------------------------------
-#define SH1106_ON    // SH1106 1.3" 128x64 OLED display (default)
-#define SSD1306_OFF  // SSD1306 0.96" 128x64 OLED display
+#define SH1106_ON
+#define SSD1306_OFF
 
 // -----------------------------------------------------------------------------
 // Extended USB protocol (weather info over serial) - disable to save flash
@@ -76,8 +114,15 @@ const char* sensor_key = "mhRddaq4R-3_P1ony-mFz0xD-YJ_sktmiB5N-e2nfIs";
 // -----------------------------------------------------------------------------
 // Defaults (overridden by EEPROM values when present)
 // -----------------------------------------------------------------------------
-#define DEFALUT_CONTRAS   0     // default display contrast
-#define SQM_CAL_OFFSET   -1.0   // default SQM calibration offset
-#define TEMP_CAL_OFFSET   0.0   // default temperature calibration offset
+#define DEFALUT_CONTRAS   0
+#define SQM_CAL_OFFSET   -1.0
+#define TEMP_CAL_OFFSET   0.0
+
+// -----------------------------------------------------------------------------
+// Compile-time consistency: deep-sleep and OTA cannot coexist.
+// -----------------------------------------------------------------------------
+#if defined(DEEP_SLEEP_ON) && defined(OTA_ON)
+  #warning "DEEP_SLEEP_ON and OTA_ON are both defined; OTA will rarely be reachable."
+#endif
 
 #endif // CONFIG_H

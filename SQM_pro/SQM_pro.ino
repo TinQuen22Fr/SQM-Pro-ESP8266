@@ -48,6 +48,9 @@
   TinyGPSPlus gps;
   SoftwareSerial gpsSerial(13, 15);
 #endif
+#ifdef OTA_ON
+  #include <ArduinoOTA.h>
+#endif
 
 // -----------------------------------------------------------------------------
 // OLED display
@@ -175,6 +178,9 @@ void setup() {
 #ifdef WIFI_ON
   wifi_setup();
 #endif
+#ifdef OTA_ON
+  ota_setup();
+#endif
 
   DisplWait('#');
 } // end of setup()
@@ -184,6 +190,54 @@ void setup() {
 // =============================================================================
 void loop() {
   String response;
+
+#ifdef DEEP_SLEEP_ON
+  // ---------------------------------------------------------------------------
+  // Battery / deep-sleep mode: take ONE measurement, push, then sleep
+  //   - GPS is given a few seconds to lock (best effort)
+  //   - OLED is briefly used so the user sees something on power-up
+  //   - USB / Unihedron mode is bypassed
+  //   - OTA is unreachable in this mode
+  // ---------------------------------------------------------------------------
+  #ifdef WIFI_ON
+    wifi_setup();
+  #endif
+
+  #ifdef GPS_ON
+    // Try to get a GPS fix for up to 5 seconds (much shorter than a cold
+    // start, just enough for warm starts). The push will go ahead anyway.
+    for (uint8_t i = 0; i < 5; i++) {
+      sqmGPS();
+      if (GPS_sync) break;
+    }
+  #endif
+
+  ReadWeather();
+  if (ReadEEAutoTempCal()) sqm.setTemperature(temp);
+  sqm.takeReading();
+  DisplSqm(sqm.mpsas, sqm.dmpsas, int(temp + 0.5), int(hum), int(pres / 100), ':');
+
+  #ifdef WIFI_ON
+    if (WiFiConnected) {
+      wifi_main(sqm.mpsas, sqm.dmpsas, temp, hum, pres);
+    }
+  #endif
+
+#ifdef DEBUG_WIFI_ON
+  Serial.printf("Going to deep-sleep for %d seconds...\n", SLEEP_SEC);
+  Serial.flush();
+#endif
+  // GPIO16 (D0) MUST be wired to RST for the chip to wake up.
+  ESP.deepSleep((uint64_t)SLEEP_SEC * 1000000ULL);
+  return; // unreachable: chip is reset on wake-up
+
+#else
+  // ---------------------------------------------------------------------------
+  // Continuous mode: OLED, OTA, USB-mode toggle, periodic Wi-Fi push
+  // ---------------------------------------------------------------------------
+#ifdef OTA_ON
+  ota_loop();
+#endif
 #ifdef GPS_ON
   sqmGPS();
 #endif
@@ -400,4 +454,5 @@ void loop() {
   } // end of if (digitalRead(ModePin))
 
   delay(5000);
+#endif // !DEEP_SLEEP_ON
 } // end of loop()
