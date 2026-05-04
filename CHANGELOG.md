@@ -5,6 +5,31 @@ Tous les changements notables de ce projet sont documentés dans ce fichier.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ;
 le projet suit le [versionnage sémantique](https://semver.org/lang/fr/).
 
+## [v2.1.3] — 2026-05-04
+
+### Modifié
+- 🔄 **Le défaut de `USB_MODE_*` repasse à `USB_MODE_ON`** dans `Config.h`,
+  pour respecter la spec d'origine du SQM Pro qui inclut un
+  **interrupteur de façade** câblé sur ModePin (GPIO2) permettant de
+  basculer entre mode normal (push dashboard) et mode USB/Unihedron.
+- ➡️ `USB_MODE_OFF` reste disponible comme opt-in pour les utilisateurs
+  qui assemblent un prototype sur breadboard / NodeMCU nu sans
+  l'interrupteur de façade.
+
+### Documentation
+- 📄 Section `USB / Unihedron mode` de `Config.h` réécrite pour refléter
+  le rôle de l'interrupteur de façade et le cas d'usage de chaque flag.
+- 📄 `DEPLOY.md` §9 dépannage : entrée mise à jour (oscillation OLED →
+  basculer en `USB_MODE_OFF` plutôt que l'inverse).
+
+### Note
+La régression introduite en v2.1.2 (qui mettait `USB_MODE_OFF` en
+défaut) cassait silencieusement le bouton de façade chez les
+utilisateurs de la PCB d'origine. Si vous étiez en v2.1.2 avec une
+PCB d'origine, mettez à jour : votre interrupteur retrouve son rôle.
+
+---
+
 ## [v2.1.2] — 2026-05-04
 
 ### Corrigé

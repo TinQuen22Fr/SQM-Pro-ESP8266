@@ -183,7 +183,7 @@ Commandes USB supportées : `i` (info), `r` (reading), `u` (unaveraged),
 | `connection failed` ou `HTTPS Timeout !`        | DNS lent / firewall port 443 / désactivez `EXTENDET_PROTOCOL_ON` pour gagner de la RAM |
 | Compile error: `WiFiClientSecure.h: No such file` | Mettre à jour le core ESP8266 (≥ 2.5.0)                                         |
 | GPS jamais synchronisé                          | Vue du ciel insuffisante ou câblage RX/TX inversé — ou commentez `#define GPS_ON` |
-| **L'OLED oscille entre "Wait USB data" et la page mesures** | NodeMCU "nu" sans la PCB SQM-HR d'origine : GPIO2 (ModePin) flotte. **Solution** : laissez `#define USB_MODE_OFF` (par défaut depuis v2.1.2), le mode USB/Unihedron est alors ignoré. Pour utilisateurs de la PCB d'origine, mettez `#define USB_MODE_ON`. |
+| **L'OLED oscille entre "Wait USB data" et la page mesures** | Vous êtes sur un NodeMCU "nu" (sans la PCB SQM-HR avec son interrupteur de façade) : GPIO2 (ModePin) flotte entre HIGH et LOW. **Solution** : dans `Config.h`, commentez `#define USB_MODE_ON` et décommentez `#define USB_MODE_OFF`. Le mode USB/Unihedron sera alors désactivé et le firmware restera toujours en mode normal. |
 | `undefined reference to BMx280I2C`              | Lib `BMx280MI` non installée (voir §4)                                          |
 | Capteur visible mais `mag` négatif              | Réajuster `SQM_CAL_OFFSET` dans `Config.h` ou via commande série `zcal1<val>`   |
 
