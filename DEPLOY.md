@@ -11,7 +11,9 @@ Nightwatch** (`magnitude-tracker`) et flasher un NodeMCU ESP8266.
 ## 1. Prérequis
 
 ### Matériel
-- ESP8266 **NodeMCU 1.0 (ESP-12E)**
+- ESP8266 **NodeMCU 1.0 (ESP-12E)** ou **NodeMCU v3 LoLin** (les deux variantes
+  utilisent le même module ESP-12E ; dans Arduino IDE, sélectionnez dans tous
+  les cas la carte *NodeMCU 1.0 (ESP-12E Module)*).
 - Capteur **TSL2591** (I²C 0x29)
 - Capteur météo **BME280** (I²C 0x76 par défaut, 0x77 possible)
 - Afficheur **OLED 128×64** — SH1106 1.3" **ou** SSD1306 0.96" (I²C, HW)
@@ -566,7 +568,67 @@ journée.
 
 ---
 
-## 14. Références
+## 14. Notes sur l'occupation mémoire (ESP8266) 🧠
+
+L'ESP8266 répartit le code et les données dans plusieurs zones séparées.
+Lors de la compilation, Arduino IDE affiche un rapport d'utilisation :
+
+```
+. Variables and constants in RAM (global, static), used 32280 / 80192 bytes (40%)
+. Instruction RAM (IRAM_ATTR),                     used 63439 / 65536 bytes (96%)
+. Code in flash (default, ICACHE_FLASH_ATTR),      used 417500 / 1048576 bytes (39%)
+```
+
+| Zone | Quoi | Limite | Marge typique | Critique ? |
+|---|---|---|---|---|
+| RAM | variables globales + statiques + heap | 80 Ko | 40 % utilisé | ✅ confortable |
+| **IRAM** | code qui doit s'exécuter pendant que la flash est verrouillée (ISR Wi-Fi, TLS, SoftwareSerial GPS) | **64 Ko** | **96 % utilisé** | ⚠️ **serré** |
+| Flash | code applicatif standard | 1 Mo | 39 % utilisé | ✅ OTA-compatible (< 50 %) |
+
+### Pourquoi l'IRAM est si chargée
+
+Trois fonctionnalités du firmware tirent fortement sur l'IRAM :
+- **`WiFiClientSecure`** (TLS pour HTTPS) — gros consommateur incompressible
+- **`ArduinoOTA`** — code OTA en partie en IRAM
+- **`SoftwareSerial`** (GPS NEO-6) — bit-banging sous interruption → ~3 Ko IRAM à lui seul
+
+### Comment libérer de l'IRAM si on dépasse
+
+Si un jour vous ajoutez une feature et tombez sur l'erreur de link
+`region 'iram1_0_seg' overflowed by N bytes`, voici les leviers, du
+moins invasif au plus invasif :
+
+| Levier | Gain typique | Inconvénient |
+|---|---|---|
+| Mettre tous les `DEBUG_*_OFF` dans `Config.h` (par défaut depuis v2.1.0) | ~1-2 Ko IRAM | Plus de logs sur le port série |
+| Commenter `#define EXTENDET_PROTOCOL_ON` | ~1 Ko flash + un peu d'IRAM | Mode USB/Unihedron sans la commande `w` (météo étendue) |
+| Brancher le GPS sur RX/TX matériels (GPIO3/GPIO1) au lieu de SoftwareSerial | **~3 Ko IRAM** | Conflit avec le port série de debug et le mode USB/Unihedron |
+| Désactiver `OTA_ON` si vous ne flashez qu'en USB | ~1-2 Ko | Plus d'OTA |
+| Désactiver `GPS_ON` si vous n'utilisez pas le GPS | ~3 Ko | Plus de localisation |
+
+### Rapport d'occupation typique avec la config par défaut v2.1.x
+
+```
+RAM       : ~32 Ko / 80 Ko    (40 %)
+IRAM      : ~63 Ko / 64 Ko    (96 %)   ⚠  marge ~2 Ko
+Flash     : ~417 Ko / 1024 Ko (39 %)   ✓  OTA OK
+```
+
+Ce niveau d'IRAM est **fonctionnel mais sans réserve**. Si vous prévoyez
+d'ajouter beaucoup de fonctionnalités (option C, mDNS étendu, Grafana,
+LoRa, etc.), envisagez l'un des leviers ci-dessus.
+
+> 💡 **Warnings Python à la compilation** : avec Python ≥ 3.12, le core
+> ESP8266 3.1.2 affiche deux `SyntaxWarning: invalid escape sequence '\s'`
+> dans `elf2bin.py`. Bug connu, corrigé dans le core 3.1.3+ ; sans aucun
+> impact sur le firmware. Vous pouvez soit mettre à jour le core, soit
+> patcher manuellement les deux occurrences `re.split('\s+', line)` en
+> `re.split(r'\s+', line)` (préfixe `r` pour *raw string*), soit
+> simplement ignorer.
+
+---
+
+## 15. Références
 
 - API magnitude-tracker : <https://sqm.quentin-astro.fr>
 - Endpoint ingestion : `POST|GET /api/sqm_push`

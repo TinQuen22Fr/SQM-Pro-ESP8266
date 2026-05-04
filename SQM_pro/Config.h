@@ -12,9 +12,13 @@
 // -----------------------------------------------------------------------------
 // Debug flags
 // -----------------------------------------------------------------------------
+// Set the *_ON variant (instead of *_OFF) of any of these to enable verbose
+// logs on the serial console. Disabling debug saves ~1-2 KB of IRAM, which
+// is precious on ESP8266 (HTTPS + OTA + SoftwareSerial already consume
+// most of the IRAM budget).
 #define DEBUG_OFF
 #define DEBUG_GPS_OFF
-#define DEBUG_WIFI_ON
+#define DEBUG_WIFI_OFF
 
 #define SERIAL_BAUD 74880 // Serial port baud. Default is ESP 74880 or 115200
 

@@ -5,6 +5,27 @@ Tous les changements notables de ce projet sont documentés dans ce fichier.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ;
 le projet suit le [versionnage sémantique](https://semver.org/lang/fr/).
 
+## [v2.1.1] — 2026-05-04
+
+### Modifié
+- 🔇 **Debug Wi-Fi désactivé par défaut** dans `Config.h`
+  (`DEBUG_WIFI_OFF` au lieu de `DEBUG_WIFI_ON`) pour libérer ~1-2 Ko
+  d'IRAM. L'IRAM était à 96 % d'occupation à la compilation, cette
+  modification ramène la marge à ~3-4 Ko sans rien perdre côté
+  fonctionnel. À réactiver à la main si besoin pour debug.
+
+### Documentation
+- 📄 Précision dans `DEPLOY.md` §1 : NodeMCU v3 LoLin et NodeMCU 1.0
+  partagent le même module ESP-12E, sélectionner *NodeMCU 1.0
+  (ESP-12E Module)* dans Arduino IDE dans les deux cas.
+- 📄 Nouvelle section `DEPLOY.md` §14 — Notes sur l'occupation mémoire
+  ESP8266 (RAM/IRAM/Flash) avec leviers pour libérer de l'IRAM si
+  besoin futur.
+- 📄 Mention du bug connu `SyntaxWarning: invalid escape sequence '\s'`
+  dans `elf2bin.py` du core ESP8266 3.1.2 (sans impact, fixé en 3.1.3+).
+
+---
+
 ## [v2.1.0] — 2026-05-04
 
 ### Ajouté
