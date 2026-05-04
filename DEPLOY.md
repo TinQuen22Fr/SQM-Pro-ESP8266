@@ -205,27 +205,164 @@ git pull
 
 ### 10.2. Sans câble (OTA — Over-The-Air) ✨
 
-Le firmware embarque le support OTA. Une fois flashé avec `OTA_ON`
-défini dans `Config.h`, votre NodeMCU apparaît automatiquement dans
-*Outils → Port* sous la forme :
+Le firmware embarque le support OTA (`ArduinoOTA`). Une fois le NodeMCU
+flashé une **première fois en USB** avec `OTA_ON` défini dans
+`Config.h`, vous pouvez le re-flasher **par le réseau Wi-Fi**, sans
+câble, depuis Arduino IDE.
+
+#### 10.2.1. Pré-requis
+
+| Pré-requis                                  | Pourquoi                                                 |
+|---------------------------------------------|----------------------------------------------------------|
+| Un premier flash USB avec `OTA_ON`           | Le firmware OTA doit être en place sur la puce            |
+| Le PC sur le **même réseau Wi-Fi** que le capteur | OTA passe en mDNS/UDP local (pas routé sur Internet)  |
+| Sur Windows : **Bonjour Print Services** installé (souvent fourni avec iTunes) | Découverte mDNS du nom `sqm-pro-001.local` |
+| Sur Linux : `avahi-daemon` actif (`sudo systemctl status avahi-daemon`) | Idem |
+| Sur macOS : rien à installer, Bonjour est natif | Idem |
+| Sketch + variables qui prennent **moins de ~50 % de la flash** | OTA stocke le nouveau firmware avant de basculer dessus |
+
+> 💡 La règle des 50 % : ESP8266 doit pouvoir tenir l'**ancien** ET le
+> **nouveau** firmware en flash pendant le transfert. Vérifiez à la
+> compilation : *Le croquis utilise XXXXX octets (YY %) de l'espace de
+> stockage du programme*. Si YY ≥ 50, désactivez `EXTENDET_PROTOCOL_ON`
+> ou `DEBUG_*_ON` pour gagner de la place.
+
+#### 10.2.2. Configuration dans `Config.h`
+
+```cpp
+// Activez OTA
+#define OTA_ON
+
+// Nom unique du capteur sur le LAN (visible dans Arduino IDE)
+const char* ota_hostname = "sqm-pro-001";   // sqm-pro-002, sqm-pro-003, ...
+
+// Mot de passe pour autoriser un upload OTA (CHANGEZ-LE !)
+const char* ota_password = "monMotDePasseFort_42!";
+```
+
+> 🔐 **Important** : changez `ota_password` avant tout déploiement
+> réel. Sur le LAN, n'importe quel appareil peut tenter un upload
+> OTA — seul ce mot de passe l'empêche.
+
+Re-flashez **une fois en USB** pour que la nouvelle config (hostname +
+mot de passe) soit prise en compte.
+
+#### 10.2.3. Première mise à jour OTA — pas à pas
+
+1. **Vérifiez que le NodeMCU est connecté au Wi-Fi.**
+   Ouvrez le moniteur série à 74880 bauds, vous devez voir :
+   ```
+   WiFi connected
+   IP address: 192.168.1.42
+   OTA ready, hostname: sqm-pro-001
+   ```
+
+2. **Ouvrez Arduino IDE** sur le même PC, sur le même Wi-Fi.
+
+3. **Menu *Outils → Port***. Au bout de 5 à 10 secondes, vous devez
+   voir apparaître un nouveau bloc :
+   ```
+   Ports série
+     /dev/ttyUSB0
+     /dev/ttyACM0
+   Ports réseau
+     sqm-pro-001 at 192.168.1.42 (Generic ESP8266 module)   ← cliquer ici
+   ```
+
+4. **Sélectionnez `sqm-pro-001 at 192.168.1.42`** (le port réseau).
+
+5. **Croquis → Téléverser** (ou raccourci `Ctrl + U` / `Cmd + U`).
+
+6. Arduino IDE compile, puis ouvre une **petite fenêtre demandant le
+   mot de passe** :
+   ```
+   ┌──────────────────────────────────────┐
+   │  Type board password to upload a     │
+   │  new sketch:                         │
+   │  [ ************************    ]     │
+   │                  [ Annuler ] [ OK ]  │
+   └──────────────────────────────────────┘
+   ```
+   Entrez `ota_password` et validez.
+
+7. **L'upload commence**. L'OLED du capteur affiche :
+   ```
+   OTA Update
+   Type: sketch
+   Do NOT unplug!
+                            32 %
+   ```
+   Le PC affiche la même progression dans la console Arduino.
+
+8. **À 100 %**, le capteur émet un bip court de 100 ms, l'OLED affiche
+   *Done. Reboot.*, le NodeMCU redémarre seul et reprend ses mesures.
+   Côté Arduino IDE, vous voyez :
+   ```
+   Uploading...
+   100% [=========================================] 372 KB
+   Téléversement terminé
+   ```
+
+#### 10.2.4. Dépannage OTA
+
+| Symptôme                                         | Cause / solution                                                  |
+|--------------------------------------------------|--------------------------------------------------------------------|
+| Le port réseau `sqm-pro-001` n'apparaît jamais   | mDNS/Bonjour pas installé (Windows : installer **Bonjour Print Services**). Sinon, ajouter manuellement le port avec son IP : *Outils → Port → Saisir un port réseau personnalisé* (Arduino IDE 2.x) |
+| Le port apparaît, l'upload démarre mais bloque à 0 % | Pare-feu Windows / antivirus bloque le port UDP 3232. Autorisez Arduino IDE dans le pare-feu |
+| `Authentication Failed`                          | Mauvais `ota_password`. Vérifiez la valeur exacte dans `Config.h` |
+| `No response from device` / `[ERROR]: No Answer` | Le capteur n'est pas sur le même sous-réseau que le PC, ou `OTA_ON` n'est pas défini, ou Wi-Fi pas encore connecté |
+| OTA démarre mais bascule en `Receive Failed`     | Coupure Wi-Fi pendant le transfert : recommencez                  |
+| OTA réussit mais le capteur reboucle au boot     | Le nouveau sketch est trop gros (≥ 50 % de la flash) → reflash USB d'urgence |
+| Tout marche en USB mais pas en OTA               | Ouvrez le moniteur série pendant que vous lancez l'upload OTA. Si vous ne voyez RIEN, le firmware n'est pas en train de tourner — reflash USB |
+
+#### 10.2.5. OTA avec plusieurs capteurs
+
+Si vous avez plusieurs capteurs (`SQM-001`, `SQM-002`, …), donnez à
+chacun un `ota_hostname` distinct dans son `Config.h` :
+
+```cpp
+// Capteur 1
+const char* SensorID    = "SQM-001";
+const char* ota_hostname = "sqm-pro-001";
+
+// Capteur 2
+const char* SensorID    = "SQM-002";
+const char* ota_hostname = "sqm-pro-002";
+```
+
+Tous apparaîtront en parallèle dans *Outils → Port → Ports réseau* et
+vous pouvez choisir lequel mettre à jour.
+
+#### 10.2.6. Désactiver l'OTA (production sans accès distant)
+
+Si votre capteur est dans un endroit physiquement sécurisé et que vous
+ne voulez pas exposer la moindre surface d'attaque sur le LAN,
+commentez simplement la ligne dans `Config.h` :
+
+```cpp
+// #define OTA_ON
+```
+
+et reflashez une dernière fois en USB. Le code OTA n'est alors plus
+compilé du tout.
+
+#### 10.2.7. Résumé visuel du flux
 
 ```
-Network ports
-  sqm-pro-001 at 192.168.x.y (Generic ESP8266 module)
+   ┌────────┐    Wi-Fi LAN    ┌────────────────────┐
+   │   PC   │ ◄──────────────►│  NodeMCU SQM-001   │
+   │Arduino │   mDNS + TCP    │  IP: 192.168.1.42  │
+   │  IDE   │   port 8266     │  hostname:         │
+   └────┬───┘                 │   sqm-pro-001      │
+        │                     └─────────┬──────────┘
+        │   1. Compile sketch            │
+        │   2. Découvre par mDNS        │
+        │   3. Demande password ────►    │  Vérifie ota_password
+        │   4. Envoie firmware ─────►    │  Stocke en flash secondaire
+        │   5. Attend ACK ◄──────────    │  Bascule + redémarre
+        │                                │
+        │                                └──► Bip court + OLED OK
 ```
-
-Pour pousser une nouvelle version :
-
-1. Sélectionner le port réseau `sqm-pro-001 at …`.
-2. *Croquis → Téléverser*.
-3. Arduino IDE demande le mot de passe : c'est `ota_password` (à
-   personnaliser dans `Config.h`).
-4. Pendant l'upload, l'OLED affiche *OTA Update / Do NOT unplug! / xx %*.
-5. À la fin, le NodeMCU émet un bip et redémarre tout seul.
-
-> 🔐 **Sécurité** : OTA n'est joignable que sur le LAN où tourne le
-> NodeMCU. Changez impérativement `ota_password` (24 caractères
-> aléatoires recommandés) avant tout déploiement réel.
 
 > ⚠️ **Si vous activez `DEEP_SLEEP_ON`**, l'OTA devient quasiment
 > inutilisable car la radio Wi-Fi est éteinte la plupart du temps. Pour
