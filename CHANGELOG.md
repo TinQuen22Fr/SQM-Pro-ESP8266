@@ -5,7 +5,7 @@ Tous les changements notables de ce projet sont documentés dans ce fichier.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ;
 le projet suit le [versionnage sémantique](https://semver.org/lang/fr/).
 
-## [v2.1.0] — non taggé
+## [v2.1.0] — 2026-05-04
 
 ### Ajouté
 - 🌃 **Mode « nuit uniquement »** : le firmware n'envoie plus de mesures à

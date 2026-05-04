@@ -27,7 +27,7 @@
 
     Wiring diagram / PCB: https://easyeda.com/hujer.roman/sqm-hr
 */
-#define Version       "2.0.0"
+#define Version       "2.1.0"
 #define SERIAL_NUMBER "20200604"
 
 #include "Config.h"
