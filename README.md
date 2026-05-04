@@ -78,6 +78,9 @@ Schéma de câblage / PCB : <https://easyeda.com/hujer.roman/sqm-hr>.
        GPS TXD ─── NodeMCU D4 (GPIO2)  → NodeMCU reçoit les trames NMEA
        GPS RXD ─── NodeMCU D7 (GPIO13) → NodeMCU envoie commandes au GPS
        3V3 / GND
+       ⚠️  Convention UART : toujours croiser TX↔RX. Si vous obtenez
+           "GPS no wire!" sur l'OLED, vérifiez d'abord que vous n'avez
+           pas TX↔TX ou RX↔RX par mégarde.
 
    Interrupteur de façade (SPDT 3 positions center-off) :
        Plot central       ── GND

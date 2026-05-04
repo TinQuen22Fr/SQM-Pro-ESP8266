@@ -5,6 +5,19 @@ Tous les changements notables de ce projet sont documentés dans ce fichier.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ;
 le projet suit le [versionnage sémantique](https://semver.org/lang/fr/).
 
+## [v2.2.3] — 2026-05-04
+
+### Documentation
+- 📄 `DEPLOY.md` §9 : la ligne de dépannage « GPS no wire! » mentionne
+  maintenant en **première intention** la vérification du croisement
+  TX↔RX (cause #1 des pannes GPS UART). Inutile d'aller chercher des
+  problèmes électriques exotiques avant d'avoir validé que TX d'un
+  côté est bien sur RX de l'autre.
+- 📄 `README.md` schéma de câblage : note explicite sur la convention
+  UART (toujours croiser TX↔RX) ajoutée sous le bloc GPS.
+
+---
+
 ## [v2.2.2] — 2026-05-04
 
 ### Ajouté
