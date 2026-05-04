@@ -10,6 +10,46 @@
 #define CONFIG_H
 
 // -----------------------------------------------------------------------------
+// Local secrets (Wi-Fi credentials, API key, OTA password, hostname)
+// -----------------------------------------------------------------------------
+// To keep your credentials OUT of the git repository:
+//   1. cp secrets.h.example secrets.h
+//   2. Edit secrets.h with your real values (it is gitignored).
+//
+// If secrets.h is missing, harmless placeholder values are used so the
+// firmware still compiles - it just won't connect to your real Wi-Fi until
+// you create the file.
+#if __has_include("secrets.h")
+  #include "secrets.h"
+#endif
+
+// Fallback default values - DO NOT put real secrets here, edit secrets.h
+#ifndef WIFI_SSID
+  #define WIFI_SSID         "YourPrimarySSID"
+#endif
+#ifndef WIFI_PASSWORD
+  #define WIFI_PASSWORD     "YourPrimaryPassword"
+#endif
+#ifndef WIFI_SSID_ALT
+  #define WIFI_SSID_ALT     "YourBackupSSID"
+#endif
+#ifndef WIFI_PASSWORD_ALT
+  #define WIFI_PASSWORD_ALT "YourBackupPassword"
+#endif
+#ifndef SENSOR_ID
+  #define SENSOR_ID         "SQM-001"
+#endif
+#ifndef SENSOR_KEY
+  #define SENSOR_KEY        "paste-your-real-api-key-here"
+#endif
+#ifndef OTA_HOSTNAME
+  #define OTA_HOSTNAME      "sqm-pro-001"
+#endif
+#ifndef OTA_PASSWORD
+  #define OTA_PASSWORD      "change-me-please"
+#endif
+
+// -----------------------------------------------------------------------------
 // Debug flags
 // -----------------------------------------------------------------------------
 // Set the *_ON variant (instead of *_OFF) of any of these to enable verbose
@@ -38,21 +78,22 @@ const char* host = "sqm.quentin-astro.fr";
 String app = "/api/sqm_push";
 #define HTTP_PORT 443
 
-// WiFi credentials (primary)
-const char* ssid     = "AstroHR";
-const char* password = "12345678";
+// WiFi credentials (primary) - actual values come from secrets.h
+const char* ssid     = WIFI_SSID;
+const char* password = WIFI_PASSWORD;
 
 // Alternative WiFi credentials (if primary fails)
 #define ALT_SSID_ON
-const char* ssid2     = "HujerIoT";
-const char* password2 = "Hujer.I.0.T";
+const char* ssid2     = WIFI_SSID_ALT;
+const char* password2 = WIFI_PASSWORD_ALT;
 
 // -----------------------------------------------------------------------------
 // Sensor identity
 // -----------------------------------------------------------------------------
-// Unique identifier for this SQM device on the backend.
-const char* SensorID   = "SQM-001";
-const char* sensor_key = "mhRddaq4R-3_P1ony-mFz0xD-YJ_sktmiB5N-e2nfIs";
+// Values come from secrets.h. Use a different SENSOR_ID per physical device
+// (SQM-001, SQM-002, ...). Same API key may be shared by all devices.
+const char* SensorID   = SENSOR_ID;
+const char* sensor_key = SENSOR_KEY;
 
 // -----------------------------------------------------------------------------
 // Night-only push (skip daytime measurements)
@@ -89,11 +130,12 @@ const char* sensor_key = "mhRddaq4R-3_P1ony-mFz0xD-YJ_sktmiB5N-e2nfIs";
 
 // Hostname advertised on the local network (mDNS / Bonjour).
 // Set a unique value per physical device, e.g. "sqm-pro-001", "sqm-pro-002".
-const char* ota_hostname = "sqm-pro-001";
+// The actual value comes from secrets.h (OTA_HOSTNAME).
+const char* ota_hostname = OTA_HOSTNAME;
 
 // Password required by Arduino IDE before pushing a new firmware over OTA.
-// CHANGE THIS to a secret value before flashing!
-const char* ota_password = "changeme-ota-password";
+// CHANGE THIS to a secret value in secrets.h before flashing!
+const char* ota_password = OTA_PASSWORD;
 
 // -----------------------------------------------------------------------------
 // Deep-sleep (battery-powered, low-power operation)

@@ -22,5 +22,9 @@ build/
 Thumbs.db
 Desktop.ini
 
-# User-specific secrets (uncomment if you keep a local copy outside the repo)
-#SQM_pro/secrets.h
+# ===========================================================================
+# Local secrets - NEVER commit your real credentials!
+# Copy SQM_pro/secrets.h.example to SQM_pro/secrets.h and edit it locally.
+# ===========================================================================
+SQM_pro/secrets.h
+secrets.h

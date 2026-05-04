@@ -5,6 +5,39 @@ Tous les changements notables de ce projet sont documentés dans ce fichier.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ;
 le projet suit le [versionnage sémantique](https://semver.org/lang/fr/).
 
+## [v2.2.0] — 2026-05-04
+
+### Ajouté
+- 🔐 **Fichier `secrets.h` séparé** pour stocker localement les
+  identifiants sensibles (Wi-Fi SSID/password, API key, OTA password,
+  hostname mDNS). Le fichier est listé dans `.gitignore` donc :
+  - Il ne sera **jamais** poussé sur GitHub par accident.
+  - Les `git pull` futurs **ne l'écraseront pas**.
+- 📋 Nouveau template `SQM_pro/secrets.h.example` (versionné sur Git) à
+  copier en `secrets.h` au premier checkout.
+- 🔧 `Config.h` détecte automatiquement la présence de `secrets.h` via
+  `__has_include("secrets.h")` et utilise les `#define` qu'il contient.
+  Si le fichier est absent, des placeholders permettent au moins la
+  compilation (fallback `#ifndef` defaults).
+
+### Modifié
+- 🔄 `Config.h` ne contient plus aucun secret en dur. Les vraies
+  valeurs Wi-Fi / clé API / OTA password sont maintenant lues depuis
+  `secrets.h` à la compilation.
+- 📄 `DEPLOY.md` §5 réécrite : nouvelle section sur la création de
+  `secrets.h` à partir du template, avec snippet d'exemple et
+  procédure pour déployer plusieurs capteurs.
+
+### Migration depuis v2.1.x
+Au premier `git pull` :
+1. `cp SQM_pro/secrets.h.example SQM_pro/secrets.h`
+2. Éditez `secrets.h` avec vos vrais identifiants
+3. Recompilez (USB ou OTA)
+
+Vous ne perdrez plus jamais vos identifiants au prochain `git pull`. 🎉
+
+---
+
 ## [v2.1.3] — 2026-05-04
 
 ### Modifié

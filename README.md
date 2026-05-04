@@ -227,7 +227,8 @@ Implémente le protocole série compatible Unihedron (`i`, `r`, `u`,
 ├── .gitignore
 └── SQM_pro/
     ├── SQM_pro.ino       ← croquis principal (setup + loop + protocole USB)
-    ├── Config.h          ← configuration utilisateur (Wi-Fi, SensorID, clé, OTA, deep-sleep)
+    ├── Config.h          ← configuration utilisateur (flags : OLED, OTA, deep-sleep, mode nuit)
+    ├── secrets.h.example ← template de secrets.h (à copier en secrets.h, gitignoré)
     ├── Setup.h           ← brochage matériel / adresse I²C BME / police OLED
     ├── Validate.h        ← contrôles à la compilation
     ├── EEPROM.ino        ← persistance des calibrations et réglages d'affichage

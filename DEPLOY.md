@@ -78,34 +78,98 @@ d'installation séparée.
 
 ## 5. Configurer votre capteur
 
-Ouvrez **`SQM_pro/Config.h`** et ajustez :
+> 🔐 **Bonne pratique : sortir vos secrets dans `secrets.h`**
+>
+> Pour ne pas avoir à ressaisir vos identifiants à chaque `git pull` (et
+> ne JAMAIS pousser vos vrais SSID/mots de passe sur GitHub), créez un
+> fichier `SQM_pro/secrets.h` à partir du template :
+>
+> ```bash
+> cd SQM-Pro-ESP8266
+> cp SQM_pro/secrets.h.example SQM_pro/secrets.h
+> nano SQM_pro/secrets.h     # éditez avec vos vrais identifiants
+> ```
+>
+> `secrets.h` est listé dans `.gitignore`, donc :
+> - Il ne sera **jamais** poussé sur le repo public
+> - Les `git pull` futurs **ne l'écraseront pas**
+>
+> `Config.h` détecte automatiquement la présence de `secrets.h` (via
+> `__has_include`) et utilise vos valeurs si le fichier existe ; sinon
+> il utilise des placeholders qui permettent au moins la compilation.
+
+Une fois `secrets.h` créé, ajustez (au choix) :
+- les flags du firmware dans `Config.h` (debug, OLED, OTA, deep-sleep,
+  mode nuit) - ceux-là peuvent rester versionnés sur Git
+- les vrais identifiants dans `secrets.h` (Wi-Fi, clé API, mot de passe
+  OTA, hostname) - jamais versionnés
+
+### Contenu typique de `secrets.h`
 
 ```cpp
-// --- Wi-Fi -------------------------------------------------------------
-const char* ssid     = "VotreSSIDWiFi";
-const char* password = "VotreMotDePasseWiFi";
+#ifndef SECRETS_H
+#define SECRETS_H
 
-// (optionnel) Wi-Fi secondaire si le premier échoue
-#define ALT_SSID_ON
-const char* ssid2     = "SSIDSecondaire";
-const char* password2 = "MotDePasseSecondaire";
+// Wi-Fi (principal et secours)
+#define WIFI_SSID         "MonSSID"
+#define WIFI_PASSWORD     "MonMotDePasse"
+#define WIFI_SSID_ALT     "SSIDDeSecours"
+#define WIFI_PASSWORD_ALT "MotDePasseDeSecours"
 
-// --- Identité du capteur -----------------------------------------------
-// Un ID UNIQUE par appareil physique. Même clé pour tous vos capteurs.
-const char* SensorID   = "SQM-001";       // "SQM-002", "SQM-003", ...
-const char* sensor_key = "votre-cle-API"; // depuis l'onglet Configuration
-                                          // de sqm.quentin-astro.fr
+// Identité du capteur (chaque appareil = un ID unique)
+#define SENSOR_ID    "SQM-001"
+#define SENSOR_KEY   "votre-vraie-cle-API"
 
+// OTA
+#define OTA_HOSTNAME "sqm-pro-001"
+#define OTA_PASSWORD "MonMotDePasseFort_42!"
+
+#endif
+```
+
+### Flags non-secrets restant dans `Config.h`
+
+Ouvrez **`SQM_pro/Config.h`** et ajustez uniquement les flags
+fonctionnels (qui peuvent rester sur GitHub) :
+
+```cpp
 // --- Afficheur : un seul activé ----------------------------------------
 #define SH1106_ON      // 1.3"  (par défaut)
 #define SSD1306_OFF    // 0.96" (à activer à la place si c'est votre écran)
+
+// --- GPS ---------------------------------------------------------------
+#define GPS_ON         // commentez si pas de module GPS
+
+// --- OTA / deep-sleep / mode nuit (cf. sections 10-12) ----------------
+#define OTA_ON
+#define DEEP_SLEEP_OFF
+#define NIGHT_ONLY_PUSH_ON
+#define NIGHT_THRESHOLD_MPSAS 12.0f
+
+// --- Bouton mode USB (cf. section 9) ----------------------------------
+#define USB_MODE_ON    // PCB SQM-HR avec interrupteur de façade
+// #define USB_MODE_OFF  // NodeMCU nu sans interrupteur
 ```
 
+> 💡 Les identifiants Wi-Fi, l'API key et le mot de passe OTA sont
+> désormais dans `secrets.h` (cf. encadré ci-dessus). Vous n'avez plus
+> jamais à les remettre dans `Config.h`.
+
 ### Plusieurs capteurs sur le même compte
-L'API accepte plusieurs `SensorID` distincts avec la **même**
-`sensor_key`. Pour déployer un 2e appareil, **il suffit de changer**
-`SensorID = "SQM-002"` et de reflasher. Les deux flux apparaîtront
-comme des `device_id` séparés dans le dashboard.
+L'API accepte plusieurs `SENSOR_ID` distincts avec la **même**
+`SENSOR_KEY`. Pour déployer un 2e appareil :
+
+1. Cloner le repo sur le 2e PC (ou copier les sources)
+2. Créer un `secrets.h` local en changeant juste `SENSOR_ID` :
+   ```cpp
+   #define SENSOR_ID    "SQM-002"
+   #define OTA_HOSTNAME "sqm-pro-002"
+   // ... reste identique
+   ```
+3. Compiler et flasher.
+
+Les deux flux apparaîtront comme des `device_id` séparés dans le
+dashboard.
 
 ---
 
