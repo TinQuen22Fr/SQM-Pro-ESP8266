@@ -448,7 +448,99 @@ Si vous voulez plus d'autonomie, augmentez `SLEEP_SEC` (par ex. 900 =
 
 ---
 
-## 12. Sécurité
+## 12. Mode « nuit uniquement » (push intelligent) 🌃
+
+Les mesures SQM ne sont **utiles que la nuit** : en plein jour, le
+TSL2591 est saturé et la magnitude lue est dépourvue de sens. Polluer
+le dashboard avec ces valeurs est inutile.
+
+Le firmware embarque un détecteur **nuit/jour** qui filtre les pushs
+vers l'API en fonction de la luminosité réellement mesurée.
+
+### 12.1. Comment ça fonctionne
+
+À chaque cycle de mesure :
+
+```
+   1. Mesure TSL2591 → magnitude (mpsas)
+   2. Si mpsas < NIGHT_THRESHOLD_MPSAS  (jour)
+        → on SAUTE le push HTTPS
+        → l'OLED continue d'afficher la valeur live + indicateur "DAY"
+        → en deep-sleep : on dort quand même SLEEP_SEC secondes
+   3. Si mpsas ≥ NIGHT_THRESHOLD_MPSAS  (nuit)
+        → push HTTPS normal
+        → indicateur "NGT" sur l'OLED
+```
+
+Le détecteur s'appuie sur la mesure du capteur lui-même, donc :
+- ✅ Pas besoin du GPS
+- ✅ Pas besoin de calculer l'heure du coucher/lever du soleil
+- ✅ Auto-adaptatif (un capteur sous bâche temporaire reste en mode nuit)
+
+### 12.2. Configuration
+
+Dans `Config.h` :
+
+```cpp
+// Activer le mode nuit-uniquement (par défaut)
+#define NIGHT_ONLY_PUSH_ON
+
+// Seuil de magnitude au-dessus duquel on considère qu'il fait nuit.
+//   10.0  = crépuscule civil (-6°)   — début de soirée, ciel encore clair
+//   12.0  = crépuscule nautique (-12°) — DÉFAUT, début de la nuit utile
+//   13.0  = crépuscule astronomique (-18°) — nuit noire stricte
+#define NIGHT_THRESHOLD_MPSAS 12.0f
+```
+
+> 💡 La valeur est **ajustable directement dans le code** sans librairie
+> externe. Modifiez-la, recompilez (USB ou OTA), c'est tout.
+
+### 12.3. Pour désactiver le filtre (toujours pousser)
+
+Si vous voulez le comportement legacy (push même en plein jour, par
+exemple pour tester la chaîne d'ingestion en pleine journée), commentez
+la ligne :
+
+```cpp
+// #define NIGHT_ONLY_PUSH_ON
+```
+
+### 12.4. Indication visuelle sur l'OLED
+
+L'angle supérieur droit de la page mesure affiche en permanence :
+
+| Affichage | Signification                                        |
+|-----------|------------------------------------------------------|
+| `NGT`     | Nuit détectée → push HTTPS actif                     |
+| `DAY`     | Jour détecté → push HTTPS désactivé (économie)       |
+
+### 12.5. Cas d'usage typiques
+
+| Contexte                                                   | Mode recommandé                              |
+|------------------------------------------------------------|----------------------------------------------|
+| Capteur **mobile** sur batterie 18650, sortie d'observation | Interrupteur physique on/off + `NIGHT_ONLY_PUSH_ON` en filet de sécurité |
+| Capteur **fixe** sur secteur (observatoire perso)          | `DEEP_SLEEP_OFF` + `OTA_ON` + `NIGHT_ONLY_PUSH_ON` |
+| Capteur **fixe** sur batterie/solaire en site distant      | `DEEP_SLEEP_ON` + `NIGHT_ONLY_PUSH_ON`       |
+
+### 12.6. Conséquence pour les batteries 18650 mobiles 🔋
+
+Pour les capteurs **portables sur batterie 18650**, la meilleure
+solution reste un **interrupteur d'alimentation physique** entre la
+batterie et le NodeMCU :
+
+- 0 µA quand éteint (vs ~20 µA même en deep-sleep)
+- Aucune décharge parasite quand le capteur dort dans son sac entre
+  deux sorties d'observation
+- Robuste, prévisible, sans surprise
+
+Le mode `NIGHT_ONLY_PUSH_ON` agit alors comme **filet de sécurité** :
+si vous oubliez d'éteindre le capteur le matin, il continuera à
+fonctionner mais ne polluera pas votre dashboard avec des données de
+journée.
+
+---
+
+## 13. Sécurité
 
 - **Ne commitez jamais** votre vraie `sensor_key` sur un dépôt public.
   Pour cela, créez un fichier `SQM_pro/secrets.h` local :
@@ -474,7 +566,7 @@ Si vous voulez plus d'autonomie, augmentez `SLEEP_SEC` (par ex. 900 =
 
 ---
 
-## 13. Références
+## 14. Références
 
 - API magnitude-tracker : <https://sqm.quentin-astro.fr>
 - Endpoint ingestion : `POST|GET /api/sqm_push`

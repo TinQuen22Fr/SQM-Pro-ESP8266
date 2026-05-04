@@ -115,6 +115,16 @@ void DisplSqm(double mpsas, double dmpsas, int temp, byte hum, int pres, char bl
   OledDisp.print(" UT");
   sprintf(_tmp, "%02d:%02d", g_hour, g_minute);
   OledDisp.print(_tmp);
+#ifdef NIGHT_ONLY_PUSH_ON
+  // Small indicator at the top-right showing whether the cloud push is
+  // active (NIGHT) or skipped (DAY) based on the current magnitude.
+  OledDisp.setCursor(13, 0);
+  if (mpsas < NIGHT_THRESHOLD_MPSAS) {
+    OledDisp.print("DAY");   // daytime detected -> push skipped
+  } else {
+    OledDisp.print("NGT");   // night -> push active
+  }
+#endif
   OledDisp.setCursor(0, 2);
   OledDisp.print('M');
   OledDisp.print(Blik ? blk : ' ');

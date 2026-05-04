@@ -51,6 +51,28 @@ const char* SensorID   = "SQM-001";
 const char* sensor_key = "mhRddaq4R-3_P1ony-mFz0xD-YJ_sktmiB5N-e2nfIs";
 
 // -----------------------------------------------------------------------------
+// Night-only push (skip daytime measurements)
+// -----------------------------------------------------------------------------
+// SQM measurements are only meaningful at night. During the day, the TSL2591
+// is saturated and the magnitude is meaningless (~0-5 mag/arcsec^2). Pushing
+// these to the dashboard just clutters the database.
+//
+// When NIGHT_ONLY_PUSH_ON is defined, the firmware uses the TSL2591 reading
+// itself as a daylight detector: if the measured magnitude is below
+// NIGHT_THRESHOLD_MPSAS, the push to the cloud is skipped (the OLED keeps
+// showing the live value, and in deep-sleep mode the chip still goes back
+// to sleep normally).
+//
+// Suggested thresholds (mag/arcsec^2):
+//   10.0 = civil twilight (-6 deg) - early dusk
+//   12.0 = nautical twilight (-12 deg) - default, useful night begins
+//   13.0 = astronomical twilight (-18 deg) - strict full night
+//
+// Set NIGHT_ONLY_PUSH_OFF to always push (legacy behaviour).
+#define NIGHT_ONLY_PUSH_ON
+#define NIGHT_THRESHOLD_MPSAS 12.0f
+
+// -----------------------------------------------------------------------------
 // OTA (Over-The-Air firmware update)
 // -----------------------------------------------------------------------------
 // When enabled, the device advertises itself on the local Wi-Fi network and

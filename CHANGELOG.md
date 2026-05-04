@@ -5,6 +5,26 @@ Tous les changements notables de ce projet sont documentés dans ce fichier.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ;
 le projet suit le [versionnage sémantique](https://semver.org/lang/fr/).
 
+## [v2.1.0] — non taggé
+
+### Ajouté
+- 🌃 **Mode « nuit uniquement »** : le firmware n'envoie plus de mesures à
+  l'API quand le TSL2591 détecte qu'il fait jour (magnitude trop faible
+  pour être physiquement valide). Activé par défaut via
+  `#define NIGHT_ONLY_PUSH_ON` dans `Config.h`, seuil ajustable via
+  `NIGHT_THRESHOLD_MPSAS` (défaut : 12.0 = crépuscule nautique).
+  - Évite de polluer le dashboard avec des données de jour (TSL2591 saturé).
+  - Économise la bande passante et l'API en mode continu.
+  - Économise la batterie en mode deep-sleep + 18650.
+  - Indicateur visuel sur l'OLED (`NGT` / `DAY` en haut à droite).
+
+### Documentation
+- 📄 Nouvelle section `DEPLOY.md` §12 — guide complet du mode nuit/jour.
+- 📄 Nouveau fichier `FUTURE-IDEA-AMELIORATION.md` recensant les pistes
+  d'amélioration non encore implémentées.
+
+---
+
 ## [v2.0.0] — 2026-05-04
 
 Première release publique du firmware **SQM Pro pour ESP8266**, adapté

@@ -64,6 +64,21 @@ void wifi_setup() {
 void wifi_main(double mpsas, double dmpsas, int temp, byte hum, int pres) {
   if (!WiFiConnected) return;
 
+#ifdef NIGHT_ONLY_PUSH_ON
+  // Skip push during daytime: the TSL2591 is saturated and the magnitude is
+  // meaningless. The OLED keeps showing the live reading.
+  if (mpsas < NIGHT_THRESHOLD_MPSAS) {
+#ifdef DEBUG_WIFI_ON
+    Serial.print("Daytime detected (mpsas=");
+    Serial.print(mpsas);
+    Serial.print(" < ");
+    Serial.print(NIGHT_THRESHOLD_MPSAS);
+    Serial.println("): skipping push.");
+#endif
+    return;
+  }
+#endif
+
   String url;
   float battery = int(analogRead(A0) / 1023.0 * 11 * 100 + 0.5) / 100.;
 

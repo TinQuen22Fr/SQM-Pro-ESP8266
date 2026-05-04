@@ -206,10 +206,12 @@ Implémente le protocole série compatible Unihedron (`i`, `r`, `u`,
 |----------------------------------|------------------------------------------------------------------------------------|
 | `OTA_ON` (par défaut)            | Le NodeMCU est joignable par Arduino IDE en réseau pour reflash sans câble USB.   |
 | `DEEP_SLEEP_ON` (optionnel)      | Mode batterie longue durée : ~20 µA en sommeil, autonomie typique ~30 j sur 2000 mAh. |
+| `NIGHT_ONLY_PUSH_ON` (par défaut) | Le push HTTPS est désactivé en plein jour (TSL2591 saturé). Évite de polluer le dashboard. Seuil ajustable via `NIGHT_THRESHOLD_MPSAS` (défaut 12.0 = crépuscule nautique). |
 
 > 🔌 **OTA** et **deep-sleep** sont incompatibles : voyez
 > **[DEPLOY.md §10.2 & §11](./DEPLOY.md)** pour les détails et le
 > câblage GPIO16-RST nécessaire au réveil.
+> 🌃 Mode **nuit/jour** : voir **[DEPLOY.md §12](./DEPLOY.md)**.
 
 ---
 
@@ -221,6 +223,7 @@ Implémente le protocole série compatible Unihedron (`i`, `r`, `u`,
 ├── README.md
 ├── DEPLOY.md            ← guide de déploiement détaillé
 ├── CHANGELOG.md         ← historique des versions
+├── FUTURE-IDEA-AMELIORATION.md  ← pistes d'évolution
 ├── .gitignore
 └── SQM_pro/
     ├── SQM_pro.ino       ← croquis principal (setup + loop + protocole USB)
