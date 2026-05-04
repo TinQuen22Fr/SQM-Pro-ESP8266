@@ -265,7 +265,10 @@ Détails dans `SQM_pro.ino`.
 | Wi-Fi connecté mais 0 donnée sur le dashboard   | `sensor_key` incorrecte, ou TLS cassé (voir ligne suivante)                     |
 | `connection failed` ou `HTTPS Timeout !`        | DNS lent / firewall port 443 / désactivez `EXTENDET_PROTOCOL_ON` pour gagner de la RAM |
 | Compile error: `WiFiClientSecure.h: No such file` | Mettre à jour le core ESP8266 (≥ 2.5.0)                                         |
-| GPS jamais synchronisé                          | Vue du ciel insuffisante ou câblage RX/TX inversé — ou commentez `#define GPS_ON` |
+| GPS jamais synchronisé                          | Voir les 3 lignes ci-dessous selon le message OLED                              |
+| **OLED affiche `GPS no wire!`**                 | Le firmware ne reçoit AUCUNE trame série du GPS. Vérifier : GPS **TXD** sur **D4 (GPIO2)**, alim **3,3 V** (pas 5 V), GND commun, et LED rouge du module qui doit s'allumer dès qu'il est alimenté. |
+| **OLED affiche `GPS wait Sat:0`**              | Le GPS envoie bien des NMEA mais n'a pas encore vu de satellite. **Approcher d'une fenêtre** ou sortir, attendre 30-90 s pour un cold start. La LED rouge du module **clignote** dès qu'il y a un fix. |
+| **OLED affiche `GPS wait Sat:1-3`**             | Pas assez de satellites (il en faut ≥ 4 pour fixer la position). Patience + meilleure vue du ciel. |
 | **L'OLED oscille entre "Wait USB data" et la page mesures** | Vous êtes sur un NodeMCU "nu" (sans la PCB SQM-HR avec son interrupteur de façade) : GPIO2 (ModePin) flotte entre HIGH et LOW. **Solution** : dans `Config.h`, commentez `#define USB_MODE_ON` et décommentez `#define USB_MODE_OFF`. Le mode USB/Unihedron sera alors désactivé et le firmware restera toujours en mode normal. |
 | `undefined reference to BMx280I2C`              | Lib `BMx280MI` non installée (voir §4)                                          |
 | Capteur visible mais `mag` négatif              | Réajuster `SQM_CAL_OFFSET` dans `Config.h` ou via commande série `zcal1<val>`   |

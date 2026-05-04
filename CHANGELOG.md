@@ -5,6 +5,21 @@ Tous les changements notables de ce projet sont documentés dans ce fichier.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ;
 le projet suit le [versionnage sémantique](https://semver.org/lang/fr/).
 
+## [v2.2.2] — 2026-05-04
+
+### Ajouté
+- 🛰️ **OLED : diagnostic GPS amélioré**. La page mesure distingue
+  désormais 3 cas quand le GPS n'a pas de fix :
+  - `GPS no wire!` → aucune donnée série reçue (problème câblage / alim)
+  - `GPS wait Sat:N` → trames NMEA reçues mais N satellites visibles
+    (insuffisant pour un fix, il en faut ≥ 4)
+  - Affichage normal lat/lng → fix GPS valide
+- 📄 `DEPLOY.md` §9 dépannage : 3 nouvelles lignes pour chaque message
+  GPS, avec actions concrètes (approcher d'une fenêtre, vérifier la
+  LED rouge du module, etc.).
+
+---
+
 ## [v2.2.1] — 2026-05-04
 
 ### Corrigé

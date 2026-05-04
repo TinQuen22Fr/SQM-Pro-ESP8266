@@ -177,8 +177,17 @@ void DisplSqm(double mpsas, double dmpsas, int temp, byte hum, int pres, char bl
     OledDisp.print('\"');
     OledDisp.print(g_lng < 0 ? 'W' : 'E');
   } else {
+    // No GPS fix yet: differentiate "no data on the serial wire at all"
+    // (likely wiring/power issue) from "data received but no satellite
+    // fix yet" (just need a clearer view of the sky / wait longer).
     OledDisp.setCursor(0, 6);
-    OledDisp.print("GPS not sync     ");
+    if (!GPS_wiring_OK) {
+      OledDisp.print("GPS no wire!     ");
+    } else {
+      OledDisp.print("GPS wait Sat:");
+      OledDisp.print(g_sat);
+      OledDisp.print("  ");
+    }
   }
   _blk_change_status();
 }
