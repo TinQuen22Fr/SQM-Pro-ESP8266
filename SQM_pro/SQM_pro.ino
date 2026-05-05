@@ -300,24 +300,49 @@ void loop() {
 
       if (digitalRead(ModePin)) break; // exit USB mode
 
-      ReadWeather();
-      if (ReadEEAutoTempCal()) sqm.setTemperature(temp);
-
-      String counter_string = String(counter++);
-      while (counter_string.length() < 10) counter_string = '0' + counter_string;
-
-      sqm.takeReading();
-      String sqm_string = String((sqm.mpsas < 0) ? -sqm.mpsas : sqm.mpsas, 2);
-      while (sqm_string.length() < 5) sqm_string = '0' + sqm_string;
-      _sign = (sqm.mpsas < 0) ? '-' : ' ';
-      sqm_string = _sign + sqm_string;
-
-      String temp_string = String((temp < 0) ? -temp : temp, 1);
-      while (temp_string.length() < 5) temp_string = '0' + temp_string;
-      _sign = (temp < 0) ? '-' : ' ';
-      temp_string = _sign + temp_string;
-
+      // ----------------------------------------------------------------------
+      // PERF FIX (v2.2.6) : lire la commande EN PREMIER, avant toute lecture
+      // capteur lente (TSL2591 takeReading peut bloquer jusqu'a ~1s en gain
+      // eleve). UDM "Find" a un timeout court (~500ms) : si on lit les
+      // capteurs avant de repondre a `ix`, UDM nous considere comme mort.
+      // On ne lit les capteurs QUE si la commande recue en a besoin.
+      // ----------------------------------------------------------------------
       String command = Serial.readStringUntil('x');
+
+      // Determine si la commande necessite des donnees capteurs fraiches
+      bool needsSensorData = command.equals("r")
+                          || command.equals("u")
+                          || command.equals("w");
+
+      String sqm_string  = "";
+      String temp_string = "";
+      String counter_string = "";
+
+      if (needsSensorData) {
+        ReadWeather();
+        if (ReadEEAutoTempCal()) sqm.setTemperature(temp);
+
+        counter_string = String(counter++);
+        while (counter_string.length() < 10) counter_string = '0' + counter_string;
+
+        sqm.takeReading();
+        sqm_string = String((sqm.mpsas < 0) ? -sqm.mpsas : sqm.mpsas, 2);
+        while (sqm_string.length() < 5) sqm_string = '0' + sqm_string;
+        _sign = (sqm.mpsas < 0) ? '-' : ' ';
+        sqm_string = _sign + sqm_string;
+
+        temp_string = String((temp < 0) ? -temp : temp, 1);
+        while (temp_string.length() < 5) temp_string = '0' + temp_string;
+        _sign = (temp < 0) ? '-' : ' ';
+        temp_string = _sign + temp_string;
+      } else if (command.equals("c")) {
+        // `cx` n'a besoin que de la temperature pour le champ "factory cal temp"
+        // mais on peut utiliser la derniere valeur connue (pas critique)
+        temp_string = String((temp < 0) ? -temp : temp, 1);
+        while (temp_string.length() < 5) temp_string = '0' + temp_string;
+        _sign = (temp < 0) ? '-' : ' ';
+        temp_string = _sign + temp_string;
+      }
 
       // Unit information request (note lower case "i")
       if (command.equals("i")) {

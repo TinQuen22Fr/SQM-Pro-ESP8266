@@ -5,6 +5,36 @@ Tous les changements notables de ce projet sont documentés dans ce fichier.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ;
 le projet suit le [versionnage sémantique](https://semver.org/lang/fr/).
 
+## [v2.2.6] — 2026-05-06
+
+### Performance / Corrigé
+- ⚡ **Réponse `ix`/`cx` quasi-instantanée (<10ms)** au lieu de potentiellement
+  ~1s. UDM `Find` a un timeout court (~500ms) : si on prend trop de temps à
+  répondre à `ix`, UDM nous considère comme « pas de SQM » et passe au
+  port suivant.
+- 🐛 **Cause** : dans la boucle USB, le firmware faisait `ReadWeather()` +
+  `sqm.takeReading()` (TSL2591 en gain élevé peut bloquer jusqu'à 600-1000ms
+  par lecture) **avant** même de lire la commande série. Donc même un simple
+  `ix` (qui n'a aucun besoin des capteurs) attendait que tout le pipeline
+  capteur termine.
+- 🔧 **Fix** : la commande série est lue en premier ; les lectures capteurs
+  ne sont effectuées **que** pour les commandes qui en ont besoin (`r`, `u`,
+  `w`). Les commandes purement EEPROM (`i`, `c`, `g`, `z…`, `A5…`) répondent
+  désormais immédiatement.
+
+### Conséquence pratique
+- Avec `v2.2.5` : `cx` répondait correctement mais lentement → UDM `Find`
+  pouvait timeout malgré tout selon la config TSL2591.
+- Avec `v2.2.6` : UDM `Find` doit aboutir dès le premier essai (sous
+  réserve que les permissions `/dev/ttyUSB0` soient OK et que le moniteur
+  série Arduino IDE ne tienne pas le port).
+
+### Fichiers modifiés
+- `SQM_pro/SQM_pro.ino` : restructuration de la boucle USB mode
+  (lecture commande avant lectures capteurs).
+
+---
+
 ## [v2.2.5] — 2026-05-04
 
 ### Corrigé
