@@ -60,7 +60,15 @@
 #define DEBUG_GPS_OFF
 #define DEBUG_WIFI_OFF
 
-#define SERIAL_BAUD 74880 // Serial port baud. Default is ESP 74880 or 115200
+// Serial port baud rate. 115200 8N1 matches the Unihedron SQM-LU/LR spec
+// so that UDM (Unihedron Device Manager) can detect and dialog with the
+// device when the front-panel switch is in USB position.
+//
+// Note: ESP8266 boot diagnostics are emitted by the chip itself at 74880
+// (hardware-fixed) regardless of this setting. Open Serial Monitor at
+// 74880 only if you want to read those boot messages; otherwise stay at
+// 115200 to communicate with UDM and the firmware Unihedron protocol.
+#define SERIAL_BAUD 115200
 
 // -----------------------------------------------------------------------------
 // GPS (NEO-6 module)

@@ -5,6 +5,28 @@ Tous les changements notables de ce projet sont documentés dans ce fichier.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ;
 le projet suit le [versionnage sémantique](https://semver.org/lang/fr/).
 
+## [v2.2.4] — 2026-05-04
+
+### Corrigé
+- 🐛 **`SERIAL_BAUD` 74880 → 115200** : indispensable pour qu'UDM
+  (Unihedron Device Manager) puisse détecter le SQM DIY sur le port USB
+  (la spec Unihedron SQM-LU/LR est 115200 8N1). Avec l'ancienne valeur
+  (74880, qui correspond au rate des messages de boot ESP8266), UDM
+  recevait du bruit binaire et concluait à l'absence de capteur.
+- ➡️ Conséquence : pour relire les messages de boot ESP, ouvrir
+  désormais le moniteur série à **74880** spécifiquement (le hardware
+  ESP utilise toujours ce rate pour le boot, indépendamment du
+  `SERIAL_BAUD`). Pour tout le reste (debug firmware, mode USB
+  Unihedron), c'est **115200**.
+
+### Documentation
+- 📄 `Config.h` : commentaire détaillé sur le pourquoi du 115200 et la
+  particularité des messages de boot à 74880.
+- 📄 `FUTURE-IDEA-AMELIORATION.md` : entrée « Fix SERIAL_BAUD » marquée
+  comme appliquée.
+
+---
+
 ## [v2.2.3] — 2026-05-04
 
 ### Documentation

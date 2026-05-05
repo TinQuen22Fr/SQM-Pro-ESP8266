@@ -168,9 +168,9 @@ ESP8266 à 10 bits, non linéaire en bord de plage). Idées :
 
 ---
 
-## 🔧 Fix `SERIAL_BAUD` 74880 → 115200 pour compatibilité UDM (Unihedron Device Manager)
+## 🔧 ~~Fix `SERIAL_BAUD` 74880 → 115200 pour compatibilité UDM (Unihedron Device Manager)~~ ✅ APPLIQUÉ EN v2.2.4
 
-> **Identifié le 04/05/2026** — à valider/appliquer plus tard.
+> **Identifié le 04/05/2026** — ✅ **Appliqué le 04/05/2026 (v2.2.4).**
 
 ### Problème
 
