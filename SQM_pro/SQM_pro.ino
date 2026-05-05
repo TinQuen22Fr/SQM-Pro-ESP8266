@@ -382,6 +382,24 @@ void loop() {
                    + ",DC:");
         Serial.println(ReadEEcontras());
 
+      // Calibration information request (required by Unihedron UDM for device discovery)
+      // Response format: c,LLLLLLLL.LLm,SSSSSSS.SSSs, TTT.TC,DDDDDDDD.DDm,SSSSSSS.SSSs
+      //   - Light calibration offset, light sensor dark period,
+      //   - Factory calibration temperature,
+      //   - Dark calibration offset, dark sensor dark period
+      } else if (command.equals("c")) {
+        // Light calibration offset (user-editable via zcal1 command)
+        String lightCal = String((SqmCalOffset < 0) ? -SqmCalOffset : SqmCalOffset, 2);
+        while (lightCal.length() < 11) lightCal = '0' + lightCal;
+
+        // Dark calibration offset (not user-editable on DIY, kept as zero reference)
+        String darkCal = "00000000.00";
+
+        // Temperature during factory calibration (use current temp as reference)
+        Serial.println("c," + lightCal + "m,0000000.000s,"
+                     + temp_string + "C,"
+                     + darkCal + "m,0000000.000s");
+
       // Configuration command
       } else if (command[0] == 'z') {
         response = command.substring(1, 4);

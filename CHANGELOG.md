@@ -5,6 +5,37 @@ Tous les changements notables de ce projet sont documentés dans ce fichier.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ;
 le projet suit le [versionnage sémantique](https://semver.org/lang/fr/).
 
+## [v2.2.5] — 2026-05-04
+
+### Corrigé
+- 🐛 **Handler `cx` (Calibration Information Request) manquant** dans le
+  protocole Unihedron. C'est **la** raison pour laquelle UDM (Unihedron
+  Device Manager) ne trouvait pas le device même avec le bon port et le
+  bon baud rate : lors de l'auto-détection, UDM envoie la séquence
+  `ix` + `cx`. `ix` répondait bien, mais `cx` restait muet → UDM
+  concluait « ce n'est pas un SQM valide » et rejetait le device.
+
+### Ajouté
+- ✨ Réponse à la commande `cx` au format officiel Unihedron :
+  ```
+  c,LLLLLLLL.LLm,SSSSSSS.SSSs, TTT.TC,DDDDDDDD.DDm,SSSSSSS.SSSs
+  ```
+  - `LLLLLLLL.LL` : light calibration offset (valeur EEPROM `SqmCalOffset`)
+  - `SSSSSSS.SSS` : dark period (toujours 0 sur DIY, pas de dark sensor séparé)
+  - ` TTT.T`      : température au moment de la calibration (temp courante)
+  - `DDDDDDDD.DD` : dark calibration offset (0 sur DIY)
+- 💡 Cette réponse permet à UDM de valider le device et d'afficher les
+  offsets de calibration dans l'onglet **Information** / **Calibration**.
+
+### Notes
+- Le champ « dark calibration » reste à 0 car le SQM DIY n'a pas de
+  capteur séparé pour le dark frame (contrairement au SQM-LU-DL
+  commercial qui a un capteur obturé). Les `zcal1Axxx.xx` et
+  `zcal2Axxx.xx` continuent de fonctionner pour ajuster light cal et
+  temp cal respectivement.
+
+---
+
 ## [v2.2.4] — 2026-05-04
 
 ### Corrigé
