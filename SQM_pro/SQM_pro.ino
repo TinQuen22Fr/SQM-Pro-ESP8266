@@ -349,6 +349,41 @@ void loop() {
         Serial.print("i,00000002,00000003,00000001,");
         Serial.println(SERIAL_NUMBER);
 
+      // ----------------------------------------------------------------------
+      // UDM auto-detection sequence handlers (added in v2.2.7)
+      // These commands are sent by UDM during `Find` and `GetVersion`; without
+      // responses UDM times out and rejects the device.
+      // Reference capture from a genuine SQM-LU on /dev/ttyUSB1 (v1962):
+      //   ix   -> i,00000004,00000003,00000057,00001962
+      //   m0x  -> m0,000
+      //   m1x  -> m1,000
+      //   m2x  -> m2,000
+      //   Yx   -> Yrcpu
+      //   Ix   -> 0000000000s,0000000000s,00000000.00m,00000000.00m
+      // ----------------------------------------------------------------------
+
+      // Report Interval Settings (CAPITAL I, different from lowercase ix)
+      // Format: <period_s>s,<threshold_period_s>s,<threshold_mpsas_1>m,<threshold_mpsas_2>m
+      // We have no report-interval feature on the DIY so we return zeros
+      // (same as a freshly-reset SQM-LU).
+      } else if (command.equals("I")) {
+        Serial.println("0000000000s,0000000000s,00000000.00m,00000000.00m");
+
+      // Manual parameter read commands (m0x, m1x, m2x)
+      // On a real SQM-LU these return device-specific values; on a DIY we
+      // echo the minimal format UDM expects so it continues its detection.
+      } else if (command.equals("m0")) {
+        Serial.println("m0,000");
+      } else if (command.equals("m1")) {
+        Serial.println("m1,000");
+      } else if (command.equals("m2")) {
+        Serial.println("m2,000");
+
+      // ContCheck: advertises supported capabilities to UDM.
+      // `Yrcpu` = reading + calibration + period + unaveraged support.
+      } else if (command.equals("Y")) {
+        Serial.println("Yrcpu");
+
       // Reading request
       } else if (command.equals("r")) {
         Serial.println("r," + sqm_string

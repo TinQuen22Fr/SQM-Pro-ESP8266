@@ -5,6 +5,57 @@ Tous les changements notables de ce projet sont documentés dans ce fichier.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ;
 le projet suit le [versionnage sémantique](https://semver.org/lang/fr/).
 
+## [v2.2.7] — 2026-05-06
+
+### Ajouté — Séquence complète d'auto-détection UDM
+
+Grâce à des logs UDM capturés sur un **vrai SQM-LU officiel**, on a
+découvert qu'UDM envoie 6 commandes dans son handshake d'identification,
+et que notre firmware n'en gérait que 1 (`ix`). Les 5 autres timeout
+faisaient échouer la détection.
+
+### Nouveaux handlers
+- 🆕 **`Ix` (I majuscule)** — Report Interval Settings
+  - ⚠️ **Différent** de `ix` (i minuscule) = Version Info !
+  - Format : `0000000000s,0000000000s,00000000.00m,00000000.00m`
+  - Représente : period_s, threshold_period_s, threshold_mpsas_1, threshold_mpsas_2
+  - On retourne des zéros (feature non implémentée sur DIY, comme un SQM-LU fraîchement reset).
+
+- 🆕 **`m0x`, `m1x`, `m2x`** — Manual parameter reads
+  - Réponses : `m0,000`, `m1,000`, `m2,000`
+  - Sur un vrai SQM-LU ce sont des paramètres de registre ; sur DIY
+    on renvoie le format minimal qu'UDM attend.
+
+- 🆕 **`Yx`** — ContCheck (advertises capabilities)
+  - Réponse : `Yrcpu` (reading + calibration + period + unaveraged)
+
+### Séquence UDM complète (maintenant supportée)
+```
+UDM → ix    → i,00000002,00000003,00000001,20200604
+UDM → m0x   → m0,000
+UDM → m1x   → m1,000
+UDM → m2x   → m2,000
+UDM → Yx    → Yrcpu
+UDM → Ix    → 0000000000s,0000000000s,00000000.00m,00000000.00m
+UDM → cx    → c,00000001.00m,0000000.000s, 022.8C,00000000.00m,0000000.000s
+```
+
+### Référence
+Capture effectuée sur un SQM-LU v1962 sur `/dev/ttyUSB1` :
+```
+Sent: ix   Received: i,00000004,00000003,00000057,00001962
+Sent: m0x  Received: m0,000
+Sent: m1x  Received: m1,000
+Sent: m2x  Received: m2,000
+Sent: Yx   Received: Yrcpu
+Sent: Ix   Received: 0000000000s,0000000000s,00000000.00m,00000000.00m
+```
+
+### Fichiers modifiés
+- `SQM_pro/SQM_pro.ino` : handlers `Ix`, `m0x`, `m1x`, `m2x`, `Yx` ajoutés.
+
+---
+
 ## [v2.2.6] — 2026-05-06
 
 ### Performance / Corrigé
