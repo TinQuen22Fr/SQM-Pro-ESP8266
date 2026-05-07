@@ -35,6 +35,44 @@ void ReadWeather() {
 }
 
 // -----------------------------------------------------------------------------
+// Battery (18650 Li-Ion) helpers
+// -----------------------------------------------------------------------------
+// Reads A0 BATTERY_OVERSAMPLES times, returns the EMPIRICALLY-calibrated
+// battery voltage (see BATTERY_VOLTS_PER_RAW in Config.h for the calibration
+// procedure when the divider hardware changes).
+// -----------------------------------------------------------------------------
+float readBatteryVoltage() {
+  long sum = 0;
+  for (int i = 0; i < BATTERY_OVERSAMPLES; i++) {
+    sum += analogRead(A0);
+    delay(2);
+  }
+  float raw = (float)sum / (float)BATTERY_OVERSAMPLES;
+  return raw * BATTERY_VOLTS_PER_RAW;
+}
+
+// Linear estimation between BATTERY_VMIN (0%) and BATTERY_VMAX (100%).
+// Note: 18650 discharge curve is NOT linear, but this is acceptable for a
+// rough indication. A LiPo gauge IC (MAX17048 etc.) would be more accurate.
+byte getBatteryPercent(float v) {
+  if (v >= BATTERY_VMAX) return 100;
+  if (v <= BATTERY_VMIN) return 0;
+  return (byte)((v - BATTERY_VMIN) / (BATTERY_VMAX - BATTERY_VMIN) * 100.0f + 0.5f);
+}
+
+// Returns the raw ADC reading averaged over BATTERY_OVERSAMPLES samples.
+// Useful to recalibrate BATTERY_VOLTS_PER_RAW: print this value, measure
+// the actual battery voltage, divide measurement by raw -> new V/raw factor.
+float readBatteryRawAvg() {
+  long sum = 0;
+  for (int i = 0; i < BATTERY_OVERSAMPLES; i++) {
+    sum += analogRead(A0);
+    delay(2);
+  }
+  return (float)sum / (float)BATTERY_OVERSAMPLES;
+}
+
+// -----------------------------------------------------------------------------
 // OLED pages
 // -----------------------------------------------------------------------------
 void DisplFirstPage() {
@@ -206,11 +244,39 @@ void DisplWait(char blk) {
     OledDisp.print("Wait USB data  ");
   OledDisp.print(Blik ? blk : ' ');
   _blk_change_status();
-  float battery = int(analogRead(A0) / 1023.0 * 11 * 100 + 0.5) / 100.;
+
+  // -------------------------------------------------------------------------
+  // Battery readout (calibrated, oversampled)
+  // Format: "Bat: X.XXV (YY%)" or warning/critical icon if low.
+  // Raw ADC value is also printed on Serial for re-calibration purposes.
+  // -------------------------------------------------------------------------
+  float vbat   = readBatteryVoltage();
+  byte  pcent  = getBatteryPercent(vbat);
+  float rawAvg = readBatteryRawAvg();
+  Serial.print("[BAT] raw_avg=");
+  Serial.print(rawAvg, 2);
+  Serial.print("  V=");
+  Serial.print(vbat, 3);
+  Serial.print("  pct=");
+  Serial.println(pcent);
+
   OledDisp.setCursor(0, 4);
-  OledDisp.print("Batery: ");
-  OledDisp.print(String(battery, 2));
-  OledDisp.print("V");
+  if (vbat < BATTERY_LOW_THRESHOLD) {
+    // Warning state: blink the marker and beep softly
+    OledDisp.print("BAT LOW! ");
+    OledDisp.print(String(vbat, 2));
+    OledDisp.print("V ");
+    OledDisp.print(Blik ? '!' : ' ');
+    if (Blik) buzzer(50);  // short discrete beep on every other refresh
+  } else {
+    OledDisp.print("Bat: ");
+    OledDisp.print(String(vbat, 2));
+    OledDisp.print("V (");
+    if (pcent < 10)      OledDisp.print("  ");
+    else if (pcent < 100) OledDisp.print(' ');
+    OledDisp.print(pcent);
+    OledDisp.print("%)");
+  }
 #ifdef WIFI_ON
   OledDisp.setCursor(0, 6);
   if (WiFiConnected) {

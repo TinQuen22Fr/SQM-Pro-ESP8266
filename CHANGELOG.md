@@ -5,6 +5,57 @@ Tous les changements notables de ce projet sont documentés dans ce fichier.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ;
 le projet suit le [versionnage sémantique](https://semver.org/lang/fr/).
 
+## [v2.2.8] — 2026-05-XX
+
+### Hardware (utilisateur)
+Le NodeMCU est désormais sur un **shield d'extension** avec rails 3,3V/5V
+distincts. Nouvelle configuration alimentation :
+- Accu 18650 → TP4056 (chargeur dédié) → OUT+/- → interrupteur ON/OFF →
+  **Vin** du shield → AMS1117 du NodeMCU → 3,3V pour ESP8266
+- Module GPS NEO-6M : alimenté **directement par l'accu 18650** (plus en 3,3V régulé)
+- Pont diviseur **100kΩ + 100kΩ** sur **B+** du TP4056 → A0 NodeMCU
+
+### Ajouté — Calcul tension batterie calibré
+- 🆕 `BATTERY_VOLTS_PER_RAW` dans `Config.h` : facteur de calibration
+  empirique (V par unité ADC) — pas de formule théorique car le
+  combiné « pont externe + diviseur interne NodeMCU + impédance
+  source ADC ESP8266 » a un comportement non-linéaire dépendant
+  du shield utilisé.
+- 🆕 Constantes 18650 calibrables : `BATTERY_VMAX`, `BATTERY_VMIN`,
+  `BATTERY_LOW_THRESHOLD`, `BATTERY_OVERSAMPLES`.
+- 🆕 Fonctions `readBatteryVoltage()`, `getBatteryPercent()`,
+  `readBatteryRawAvg()` dans `MyLib.ino` (oversampling 8x → bruit ADC réduit).
+
+### Calibration initiale
+- Mesure utilisateur : 3,99 V au multimètre, ancien code affichait 0,06 V
+- Reverse-engineered raw ADC ≈ 5,58
+- Facteur calculé : `BATTERY_VOLTS_PER_RAW = 3.99 / 5.58 ≈ 0.715 V/raw`
+
+### Affichage OLED amélioré (page Wait)
+- 🆕 Format normal : `Bat: X.XXV (YY%)`
+- 🆕 Si tension < `BATTERY_LOW_THRESHOLD` (3,20 V par défaut) :
+  - Texte `BAT LOW! X.XXV !` clignotant
+  - Bip court périodique (50ms) sur le buzzer
+- 🆕 Trace série `[BAT] raw_avg=N.NN V=V.VVV pct=PP` à chaque cycle
+  pour faciliter la re-calibration future.
+
+### API push enrichie
+- 🆕 Nouveau champ `&Vpct=` (pourcentage batterie 0-100) en plus du
+  `&V=` (tension en V, désormais 3 décimales).
+
+### Procédure de re-calibration
+1. Charger l'accu, mesurer **B+** au multimètre → noter `Vmesure`.
+2. Ouvrir le Serial Monitor à 115200 → noter la valeur `raw_avg` affichée.
+3. Calculer : `nouveau BATTERY_VOLTS_PER_RAW = Vmesure / raw_avg`.
+4. Mettre à jour `Config.h`, reflasher.
+
+### Fichiers modifiés
+- `SQM_pro/Config.h` : bloc batterie complet ajouté (calibration + seuils)
+- `SQM_pro/MyLib.ino` : fonctions batterie + nouveau bloc d'affichage OLED
+- `SQM_pro/WiFi.ino` : utilise les nouvelles fonctions, ajoute `Vpct` au payload
+
+---
+
 ## [v2.2.7] — 2026-05-06
 
 ### Ajouté — Séquence complète d'auto-détection UDM

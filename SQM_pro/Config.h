@@ -218,6 +218,50 @@ const char* ota_password = OTA_PASSWORD;
 #define TEMP_CAL_OFFSET   0.0
 
 // -----------------------------------------------------------------------------
+// Battery monitoring (18650 Li-Ion via voltage divider on A0)
+// -----------------------------------------------------------------------------
+//
+// Hardware setup (post-v2.2.8):
+//
+//   18650 (B+ TP4056) ---[ R1=100k ]---+---[ R2=100k ]--- GND
+//                                      |
+//                                      +----> A0 pin (NodeMCU)
+//                                              |
+//                                              +-> internal NodeMCU divider
+//                                                  (220k + 100k typical)
+//                                              +-> ESP8266 ADC (0-1V, 0-1023)
+//
+// The combination of the external divider + NodeMCU on-board divider + the
+// ESP8266 ADC source-impedance loading gives a non-trivial transfer ratio
+// that does NOT match the simple theoretical formula. We therefore use
+// EMPIRICAL CALIBRATION rather than theory.
+//
+// CALIBRATION PROCEDURE:
+//   1) Charge the battery and measure B+ with a multimeter.  ex: 3.99 V
+//   2) Read the ADC raw value (printed on the OLED in WAIT mode and on
+//      the Serial monitor every loop). Assume raw value: R.
+//   3) Compute:
+//        BATTERY_VOLTS_PER_RAW = Vmultimeter / R
+//   4) Update the value below and reflash.
+//
+// Initial calibration from user measurement:
+//   - Vmultimeter = 3.99 V
+//   - displayed   = 0.06 V (with old formula raw/1023*11)
+//   - so raw      = 0.06 * 1023 / 11 ~= 5.58
+//   - factor      = 3.99 / 5.58 ~= 0.715 V per raw unit
+//
+#define BATTERY_VOLTS_PER_RAW   0.715f
+//
+// 18650 Li-Ion typical voltage range
+#define BATTERY_VMAX            4.20f   // V - fully charged
+#define BATTERY_VMIN            3.00f   // V - cutoff (do NOT discharge below)
+#define BATTERY_LOW_THRESHOLD   3.20f   // V - low-battery warning threshold
+//
+// Number of ADC samples averaged per reading (reduces noise on high-impedance
+// dividers; ESP8266 ADC is only 10-bit and rather noisy by itself).
+#define BATTERY_OVERSAMPLES     8
+
+// -----------------------------------------------------------------------------
 // Compile-time consistency: deep-sleep and OTA cannot coexist.
 // -----------------------------------------------------------------------------
 #if defined(DEEP_SLEEP_ON) && defined(OTA_ON)

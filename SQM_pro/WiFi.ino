@@ -80,7 +80,9 @@ void wifi_main(double mpsas, double dmpsas, int temp, byte hum, int pres) {
 #endif
 
   String url;
-  float battery = int(analogRead(A0) / 1023.0 * 11 * 100 + 0.5) / 100.;
+  // Calibrated battery readout (helper defined in MyLib.ino)
+  float battery = readBatteryVoltage();
+  byte  battPct = getBatteryPercent(battery);
 
   // Compute lux from the TSL2591 raw channels (optional extra field "L").
   float lux = 0.0f;
@@ -96,7 +98,7 @@ void wifi_main(double mpsas, double dmpsas, int temp, byte hum, int pres) {
   Serial.print("Humidity: ");Serial.print(hum);    Serial.println(" %");
   Serial.print("Pressure: ");Serial.print(pres/100); Serial.println(" hPa");
   Serial.print("Lux: ");     Serial.println(lux, 4);
-  Serial.print("Battery: "); Serial.println(battery);
+  Serial.print("Battery: "); Serial.print(battery, 3); Serial.print(" V ("); Serial.print(battPct); Serial.println(" %)");
 #endif
 
   url  = "?ID=";  url += SensorID;
@@ -106,7 +108,8 @@ void wifi_main(double mpsas, double dmpsas, int temp, byte hum, int pres) {
   url += "&P=";   url += pres / 100;
   url += "&S=";   url += mpsas;
   url += "&D=";   url += dmpsas;
-  url += "&V=";   url += battery;
+  url += "&V=";   url += String(battery, 3);
+  url += "&Vpct=";url += battPct;
   url += "&L=";   url += String(lux, 4);
 #ifdef GPS_ON
   if (g_sat > 2) {
