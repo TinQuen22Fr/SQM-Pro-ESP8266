@@ -5,6 +5,92 @@ Tous les changements notables de ce projet sont documentés dans ce fichier.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ;
 le projet suit le [versionnage sémantique](https://semver.org/lang/fr/).
 
+## [v2.2.9] — 2026-05-08
+
+### 🐛 Corrigé — BUG CRITIQUE introduit en v2.2.8 (pollution Serial)
+
+La trace `[BAT] raw_avg=... V=... pct=...` ajoutée en v2.2.8 dans
+`DisplWait()` était envoyée sur `Serial` **même en mode USB**. Or en
+mode USB le port série est réservé au protocole Unihedron : tout print
+parasite corrompt les réponses UDM.
+
+**Symptôme observé dans le log UDM** :
+```
+Sent: ix   Received: [BAT] raw_avg=13.63  V=7.395  pct=100  ❌
+```
+
+UDM a envoyé `ix` mais a reçu **notre trace debug** au lieu de la
+réponse `i,...`. Le canal devenait désynchronisé en cascade :
+```
+Sent: rx   Received: 0000000000s,...    ← réponse au Ix précédent
+Sent: cx   Received: r, 11.21m,...      ← réponse au rx précédent
+```
+
+**Fix v2.2.9** : tous les `Serial.print` de debug dans `DisplWait()`
+(trace batterie + bip buzzer BAT LOW) sont désormais conditionnés à
+`if (digitalRead(ModePin))` → ils ne se déclenchent que **en mode
+WiFi/normal**. En mode USB/Unihedron, plus aucune pollution série.
+
+### 🐛 Corrigé — Format `cx` 5e champ (depuis v2.2.5)
+
+Comparé au log d'un vrai SQM-LU :
+```
+SQM-LU : c,00000019.92m,0000300.000s, 019.9C,00000008.71m, 020.9C
+v2.2.8 : c,00000001.00m,0000000.000s, 022.8C,00000000.00m,0000000.000s
+                                                          ^^^^^^^^^^^^
+                                                  5e champ FAUX (period)
+```
+
+Le 5e champ est en réalité une **TEMPÉRATURE** (calibration dark), pas
+un period. Corrigé en `temp_string + "C"`.
+
+### ✨ Ajouté — Handlers UDM extraits du log SQM-LU officiel
+
+Nouvelles commandes observées lors du dialogue UDM ↔ SQM-LU v1962 :
+
+| Commande | Réponse | Rôle |
+|---|---|---|
+| `A1x` | `A,1,D,7,0,00128,08224` | Logging param 1 |
+| `A2x` / `A2Px` | `A,2,D,3,F,7,P` | Logging param 2 |
+| `A3x` / `A31x` | `A,3,D,0,1` | Logging mode |
+| `A4x` | `A,4,0,7,31,-049,224,002` | Logging config |
+| `P...x` | `0000000000s,0000000000s,...` | Set Period (echo) |
+| `T...x` | `0000000000s,0000000000s,...` | Set Threshold (echo) |
+
+Ces réponses correspondent à un SQM-LU fraîchement réinitialisé. Le
+DIY n'implémente pas de logging on-device (pas de stockage flash
+dédié), mais ces réponses statiques permettent à UDM de continuer son
+dialogue sans timeout et d'activer ses boutons.
+
+### ✨ Corrigé — Réponse `zcalDx`
+
+Factory reset : `zxdL` → `zxdU` pour matcher le SQM-LU officiel.
+
+### 🚫 Limitation hardware découverte
+
+**`Find` USB d'UDM ne trouvera JAMAIS le DIY** :
+```
+FindUSB: Searching here : /dev/serial/by-id/usb-FTDI_*
+```
+
+UDM cherche **uniquement** des chips FTDI sur Linux. Le NodeMCU
+LoLin V3 utilise un **CH340G** → invisible pour `Find` USB **par
+design d'UDM**. Workaround : utiliser l'onglet **RS232** avec port et
+baud sélectionnés manuellement (déjà fonctionnel en v2.2.8).
+
+Pour rendre `Find` USB compatible : remplacer la puce CH340 par un
+FT232RL sur la carte d'extension (modification hardware optionnelle,
+non couverte par cette release).
+
+### Fichiers modifiés
+- `SQM_pro/MyLib.ino` : guard `Serial.print` + `buzzer()` sur ModePin
+- `SQM_pro/SQM_pro.ino` :
+  - format `cx` corrigé (5e champ = temp)
+  - handlers `A1`, `A2`, `A2P`, `A3`, `A31`, `A4`, `P...`, `T...`
+  - `zcalDx` → `zxdU`
+
+---
+
 ## [v2.2.8] — 2026-05-XX
 
 ### Hardware (utilisateur)

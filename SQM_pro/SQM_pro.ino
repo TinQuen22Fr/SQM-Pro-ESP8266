@@ -443,22 +443,45 @@ void loop() {
         Serial.println(ReadEEcontras());
 
       // Calibration information request (required by Unihedron UDM for device discovery)
-      // Response format: c,LLLLLLLL.LLm,SSSSSSS.SSSs, TTT.TC,DDDDDDDD.DDm,SSSSSSS.SSSs
-      //   - Light calibration offset, light sensor dark period,
-      //   - Factory calibration temperature,
-      //   - Dark calibration offset, dark sensor dark period
+      // Response format (matches genuine SQM-LU output observed via UDM logs):
+      //   c,LLLLLLLL.LLm,SSSSSSS.SSSs, TTL.TC,DDDDDDDD.DDm, TTD.TC
+      //   - Light calibration offset
+      //   - Light sensor dark-period (we have no logging period -> 0)
+      //   - Temperature recorded during light calibration
+      //   - Dark calibration offset (no separate dark sensor on DIY -> 0)
+      //   - Temperature recorded during dark calibration  (NOT a period!)
+      // Reference SQM-LU response: c,00000019.92m,0000300.000s, 019.9C,00000008.71m, 020.9C
+      // The 5th field was wrongly a period in v2.2.5..v2.2.8: fixed in v2.2.9.
       } else if (command.equals("c")) {
-        // Light calibration offset (user-editable via zcal1 command)
         String lightCal = String((SqmCalOffset < 0) ? -SqmCalOffset : SqmCalOffset, 2);
         while (lightCal.length() < 11) lightCal = '0' + lightCal;
-
-        // Dark calibration offset (not user-editable on DIY, kept as zero reference)
         String darkCal = "00000000.00";
-
-        // Temperature during factory calibration (use current temp as reference)
         Serial.println("c," + lightCal + "m,0000000.000s,"
                      + temp_string + "C,"
-                     + darkCal + "m,0000000.000s");
+                     + darkCal + "m,"
+                     + temp_string + "C");
+
+      // Logging parameter readouts (A1x..A4x).
+      // Real SQM-LU returns logging buffer pointers / mode flags. The DIY does
+      // not implement on-device logging, but UDM expects valid responses to
+      // enable certain UI buttons. We return values matching a freshly-reset
+      // SQM-LU as observed in UDM logs.
+      } else if (command.equals("A1")) {
+        Serial.println("A,1,D,7,0,00128,08224");
+      } else if (command.equals("A2") || command.equals("A2P")) {
+        Serial.println("A,2,D,3,F,7,P");
+      } else if (command.equals("A3") || command.equals("A31")) {
+        Serial.println("A,3,D,0,1");
+      } else if (command.equals("A4")) {
+        Serial.println("A,4,0,7,31,-049,224,002");
+
+      // Set Period / Set Threshold writes (UDM Report Interval tab).
+      // We don't store these on the DIY (no logging feature), but we echo
+      // the current "Ix" report so UDM doesn't stall waiting for a reply.
+      } else if (command.length() >= 1 && command[0] == 'P') {
+        Serial.println("0000000000s,0000000000s,00000000.00m,00000000.00m");
+      } else if (command.length() >= 1 && command[0] == 'T') {
+        Serial.println("0000000000s,0000000000s,00000000.00m,00000000.00m");
 
       // Configuration command
       } else if (command[0] == 'z') {
@@ -506,7 +529,8 @@ void loop() {
             WriteEETempCalOffset(TempCalOffset);
             WriteEESqmCalOffset(SqmCalOffset);
             WriteEEScontras(DEFALUT_CONTRAS);
-            Serial.println("zxdL");
+            // Match genuine SQM-LU response (was "zxdL" in v2.2.7 -> wrong)
+            Serial.println("zxdU");
           }
         }
 

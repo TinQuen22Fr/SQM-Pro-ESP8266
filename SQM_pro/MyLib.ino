@@ -248,17 +248,22 @@ void DisplWait(char blk) {
   // -------------------------------------------------------------------------
   // Battery readout (calibrated, oversampled)
   // Format: "Bat: X.XXV (YY%)" or warning/critical icon if low.
-  // Raw ADC value is also printed on Serial for re-calibration purposes.
+  // Raw ADC value is printed on Serial ONLY in WiFi mode (when ModePin is
+  // HIGH). In USB/Unihedron mode the Serial line is reserved for the protocol
+  // (any debug print would corrupt UDM responses -- caused total handshake
+  // failure in v2.2.8, fixed in v2.2.9).
   // -------------------------------------------------------------------------
   float vbat   = readBatteryVoltage();
   byte  pcent  = getBatteryPercent(vbat);
-  float rawAvg = readBatteryRawAvg();
-  Serial.print("[BAT] raw_avg=");
-  Serial.print(rawAvg, 2);
-  Serial.print("  V=");
-  Serial.print(vbat, 3);
-  Serial.print("  pct=");
-  Serial.println(pcent);
+  if (digitalRead(ModePin)) {  // HIGH = WiFi/normal mode -> debug allowed
+    float rawAvg = readBatteryRawAvg();
+    Serial.print("[BAT] raw_avg=");
+    Serial.print(rawAvg, 2);
+    Serial.print("  V=");
+    Serial.print(vbat, 3);
+    Serial.print("  pct=");
+    Serial.println(pcent);
+  }
 
   OledDisp.setCursor(0, 4);
   if (vbat < BATTERY_LOW_THRESHOLD) {
@@ -267,7 +272,9 @@ void DisplWait(char blk) {
     OledDisp.print(String(vbat, 2));
     OledDisp.print("V ");
     OledDisp.print(Blik ? '!' : ' ');
-    if (Blik) buzzer(50);  // short discrete beep on every other refresh
+    // Beep only in WiFi mode -- in USB/Unihedron mode the buzzer would add
+    // timing jitter that disturbs the host (UDM) communication window.
+    if (Blik && digitalRead(ModePin)) buzzer(50);
   } else {
     OledDisp.print("Bat: ");
     OledDisp.print(String(vbat, 2));
