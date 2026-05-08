@@ -5,6 +5,60 @@ Tous les changements notables de ce projet sont documentés dans ce fichier.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ;
 le projet suit le [versionnage sémantique](https://semver.org/lang/fr/).
 
+## [v2.2.10] — 2026-05-08
+
+### 🐛 Corrigé — Température `cx` à `000.0C` à froid
+
+Bug confirmé dans le moniteur série :
+```
+cx -> c,00000001.00m,0000000.000s, 000.0C,00000000.00m, 000.0C
+                                  ^^^^^^^                ^^^^^^^
+                                  temperature = 0 si cx envoye en premier
+```
+
+**Cause** : la commande `cx` réutilisait la variable globale `temp` qui
+n'est jamais initialisée tant qu'aucun `rx`/`ux`/`wx` n'a été envoyé.
+
+**Fix** : `cx` déclenche maintenant une lecture BME280 (via `ReadWeather()`,
+~100ms) avant de construire la réponse. Plus rapide que `rx` (qui lit
+aussi le TSL2591 ~1s) mais suffisant pour avoir une vraie température.
+
+### ✨ Ajouté — Macros calibration personnalisables (cosmétique)
+
+Nouvelles macros dans `Config.h` pour personnaliser la réponse `cx`
+façon "certificat de calibration Unihedron" :
+
+```cpp
+#define DIY_LIGHT_CAL_OFFSET      0.00f    // 0 = utilise SqmCalOffset live
+#define DIY_DARK_CAL_TIME_PERIOD  0.0f     // secondes
+#define DIY_LIGHT_CAL_TEMP_FROM_BME280     // sinon DIY_LIGHT_CAL_TEMP
+#define DIY_DARK_CAL_OFFSET       0.00f
+#define DIY_DARK_CAL_TEMP_FROM_BME280
+```
+
+**IMPORTANT** : ces macros n'affectent **PAS** les mesures réelles.
+Elles ne modifient que ce que `cx` retourne à UDM (champs cosmétiques).
+Les mesures live (`rx`, `ux`, `wx`) utilisent toujours :
+- `SqmCalOffset` (EEPROM, défaut `SQM_CAL_OFFSET`) pour la magnitude
+- `TempCalOffset` (EEPROM, défaut `TEMP_CAL_OFFSET`) pour la temp
+- Les valeurs live BME280 / TSL2591
+
+Les mesures continuent de fonctionner normalement quoi qu'il arrive.
+
+### Comportement UDM observé en v2.2.9 (utilisateur)
+- ✅ `Settings` puis `Header` puis `Continuous` → log continu fonctionnel
+- ✅ Valeurs mpsas, counter, time, Tint correctes dans le tableau
+- ⚠️ Boutons `One record`, `Continuous` (1er écran), `Reading` grisés
+  → contournement : passer par menu `Logging` → `Settings` puis revenir
+  → comportement probablement lié à Protocol=2 (vs Protocol=4 du SQM-LU)
+  → conséquence acceptable, on garde Protocol=2 pour rester safe
+
+### Fichiers modifiés
+- `SQM_pro/Config.h` : macros DIY_* certificat calibration
+- `SQM_pro/SQM_pro.ino` : `cx` lit BME280 + utilise macros DIY_*
+
+---
+
 ## [v2.2.9] — 2026-05-08
 
 ### 🐛 Corrigé — BUG CRITIQUE introduit en v2.2.8 (pollution Serial)

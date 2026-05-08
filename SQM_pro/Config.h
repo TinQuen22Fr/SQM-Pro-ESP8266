@@ -262,6 +262,35 @@ const char* ota_password = OTA_PASSWORD;
 #define BATTERY_OVERSAMPLES     8
 
 // -----------------------------------------------------------------------------
+// SQM Calibration certificate (optional, cosmetic)
+// -----------------------------------------------------------------------------
+// Inspired by the Unihedron SQM-LU calibration certificate. These values are
+// returned by the `cx` (calibration info) UDM command to provide a
+// "factory-style" identity to the DIY device.
+//
+// IMPORTANT - These macros do NOT affect actual measurements:
+//   - The light-sensor offset actually APPLIED to readings comes from
+//     `SqmCalOffset` (EEPROM, default = SQM_CAL_OFFSET above).
+//   - The temperature compensation actually applied comes from
+//     `TempCalOffset` (EEPROM, default = TEMP_CAL_OFFSET above).
+//   - Live readings (rx, ux, wx) ALWAYS reflect the true sensor + EEPROM
+//     calibration, not the values below.
+//
+// In other words: changing the macros below ONLY changes what `cx` returns
+// to UDM (the calibration certificate fields). All live measurements
+// continue to function normally regardless.
+//
+// You can leave these as-is if you don't need a custom certificate.
+//
+#define DIY_LIGHT_CAL_OFFSET      0.00f    // mags/arcsec^2 - 0 = use SqmCalOffset (recommended)
+#define DIY_DARK_CAL_TIME_PERIOD  0.0f     // seconds - DIY has no dark sensor (0)
+#define DIY_LIGHT_CAL_TEMP_FROM_BME280     // when defined: light cal temp = current BME280 reading
+//#define DIY_LIGHT_CAL_TEMP    19.9f      // alternative: hard-coded value (uncomment + comment above)
+#define DIY_DARK_CAL_OFFSET       0.00f    // mags/arcsec^2 - DIY has no dark sensor (0)
+#define DIY_DARK_CAL_TEMP_FROM_BME280      // when defined: dark cal temp = current BME280 reading
+//#define DIY_DARK_CAL_TEMP     20.9f      // alternative: hard-coded value (uncomment + comment above)
+
+// -----------------------------------------------------------------------------
 // Compile-time consistency: deep-sleep and OTA cannot coexist.
 // -----------------------------------------------------------------------------
 #if defined(DEEP_SLEEP_ON) && defined(OTA_ON)

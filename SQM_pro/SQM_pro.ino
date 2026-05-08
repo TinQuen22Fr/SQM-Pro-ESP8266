@@ -309,16 +309,21 @@ void loop() {
       // ----------------------------------------------------------------------
       String command = Serial.readStringUntil('x');
 
-      // Determine si la commande necessite des donnees capteurs fraiches
-      bool needsSensorData = command.equals("r")
-                          || command.equals("u")
-                          || command.equals("w");
+      // Determine si la commande necessite des donnees SQM (TSL2591 ~1s)
+      bool needsSqmData = command.equals("r")
+                       || command.equals("u")
+                       || command.equals("w");
+
+      // Determine si la commande necessite seulement la temperature BME280
+      // (~100ms). v2.2.10: `cx` doit lire le BME280 sinon il renvoie 000.0C
+      // a froid (avant tout `rx`/`ux`/`wx`).
+      bool needsTempOnly = command.equals("c");
 
       String sqm_string  = "";
       String temp_string = "";
       String counter_string = "";
 
-      if (needsSensorData) {
+      if (needsSqmData) {
         ReadWeather();
         if (ReadEEAutoTempCal()) sqm.setTemperature(temp);
 
@@ -335,9 +340,9 @@ void loop() {
         while (temp_string.length() < 5) temp_string = '0' + temp_string;
         _sign = (temp < 0) ? '-' : ' ';
         temp_string = _sign + temp_string;
-      } else if (command.equals("c")) {
-        // `cx` n'a besoin que de la temperature pour le champ "factory cal temp"
-        // mais on peut utiliser la derniere valeur connue (pas critique)
+      } else if (needsTempOnly) {
+        // BME280 lecture rapide (sans sqm.takeReading)
+        ReadWeather();
         temp_string = String((temp < 0) ? -temp : temp, 1);
         while (temp_string.length() < 5) temp_string = '0' + temp_string;
         _sign = (temp < 0) ? '-' : ' ';
@@ -446,20 +451,59 @@ void loop() {
       // Response format (matches genuine SQM-LU output observed via UDM logs):
       //   c,LLLLLLLL.LLm,SSSSSSS.SSSs, TTL.TC,DDDDDDDD.DDm, TTD.TC
       //   - Light calibration offset
-      //   - Light sensor dark-period (we have no logging period -> 0)
+      //   - Dark calibration time period (NOT a "light dark period")
       //   - Temperature recorded during light calibration
-      //   - Dark calibration offset (no separate dark sensor on DIY -> 0)
-      //   - Temperature recorded during dark calibration  (NOT a period!)
+      //   - Dark calibration offset
+      //   - Temperature recorded during dark calibration
       // Reference SQM-LU response: c,00000019.92m,0000300.000s, 019.9C,00000008.71m, 020.9C
-      // The 5th field was wrongly a period in v2.2.5..v2.2.8: fixed in v2.2.9.
+      //
+      // v2.2.10: each field is now configurable via Config.h DIY_* macros.
+      // Note: these are COSMETIC ONLY for UDM display; live measurements
+      // (rx/ux) always use the live SqmCalOffset / temp regardless.
       } else if (command.equals("c")) {
-        String lightCal = String((SqmCalOffset < 0) ? -SqmCalOffset : SqmCalOffset, 2);
+        // Light calibration offset: 0 in macro = use live SqmCalOffset
+        float lightOff = (DIY_LIGHT_CAL_OFFSET != 0.0f)
+                       ? DIY_LIGHT_CAL_OFFSET
+                       : ((SqmCalOffset < 0) ? -SqmCalOffset : SqmCalOffset);
+        String lightCal = String(lightOff, 2);
         while (lightCal.length() < 11) lightCal = '0' + lightCal;
-        String darkCal = "00000000.00";
-        Serial.println("c," + lightCal + "m,0000000.000s,"
-                     + temp_string + "C,"
+
+        // Dark calibration time period (DIY has no dark sensor by default)
+        char darkPeriodBuf[16];
+        dtostrf(DIY_DARK_CAL_TIME_PERIOD, 11, 3, darkPeriodBuf);
+        // dtostrf left-pads with spaces; replace leading spaces with zeros
+        for (int i = 0; darkPeriodBuf[i] == ' '; i++) darkPeriodBuf[i] = '0';
+        String darkPeriod = String(darkPeriodBuf);
+
+        // Light calibration temperature
+        String lightTempStr;
+#ifdef DIY_LIGHT_CAL_TEMP_FROM_BME280
+        lightTempStr = temp_string;  // built from live BME280 reading above
+#else
+        lightTempStr = String((DIY_LIGHT_CAL_TEMP < 0) ? -DIY_LIGHT_CAL_TEMP : DIY_LIGHT_CAL_TEMP, 1);
+        while (lightTempStr.length() < 5) lightTempStr = '0' + lightTempStr;
+        lightTempStr = ((DIY_LIGHT_CAL_TEMP < 0) ? '-' : ' ') + lightTempStr;
+#endif
+
+        // Dark calibration offset
+        String darkCal = String(
+          (DIY_DARK_CAL_OFFSET < 0) ? -DIY_DARK_CAL_OFFSET : DIY_DARK_CAL_OFFSET, 2);
+        while (darkCal.length() < 11) darkCal = '0' + darkCal;
+
+        // Dark calibration temperature
+        String darkTempStr;
+#ifdef DIY_DARK_CAL_TEMP_FROM_BME280
+        darkTempStr = temp_string;  // same live BME280 reading
+#else
+        darkTempStr = String((DIY_DARK_CAL_TEMP < 0) ? -DIY_DARK_CAL_TEMP : DIY_DARK_CAL_TEMP, 1);
+        while (darkTempStr.length() < 5) darkTempStr = '0' + darkTempStr;
+        darkTempStr = ((DIY_DARK_CAL_TEMP < 0) ? '-' : ' ') + darkTempStr;
+#endif
+
+        Serial.println("c," + lightCal + "m," + darkPeriod + "s,"
+                     + lightTempStr + "C,"
                      + darkCal + "m,"
-                     + temp_string + "C");
+                     + darkTempStr + "C");
 
       // Logging parameter readouts (A1x..A4x).
       // Real SQM-LU returns logging buffer pointers / mode flags. The DIY does
