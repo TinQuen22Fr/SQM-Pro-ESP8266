@@ -51,30 +51,22 @@ float readBatteryVoltage() {
   return raw * BATTERY_VOLTS_PER_RAW;
 }
 
-// Linear estimation between BATTERY_VMIN (0%) and BATTERY_VMAX (100%).
-// Note: 18650 discharge curve is NOT linear, but this is acceptable for a
-// rough indication. A LiPo gauge IC (MAX17048 etc.) would be more accurate.
+// Battery percent calculation.
 //
-// v2.2.11: replaced naive linear interpolation by a piecewise approximation
-// of a typical 1S LiPo discharge curve at light load (~50-200mA). The curve
-// is much flatter between 3.7-4.0V (the "plateau") and drops rapidly below
-// 3.6V (the "knee"). The previous linear model gave 82% at 3.99V which was
-// technically correct but counter-intuitive (a freshly-charged LiPo is at
-// 4.20V, not 3.99V).
+// Two strategies available (selected via BATTERY_CURVE_* macro in Config.h):
 //
-// Curve points (V, %): based on combined Adafruit/Sparkfun/Maxim datasheets
-//   4.20 -> 100%
-//   4.10 ->  90%
-//   4.00 ->  80%
-//   3.90 ->  70%
-//   3.80 ->  55%
-//   3.70 ->  35%
-//   3.60 ->  20%
-//   3.50 ->  10%
-//   3.40 ->   5%
-//   3.30 ->   2%
-//   3.00 ->   0%
+//   BATTERY_CURVE_LINEAR    -> proportional from VMIN (0%) to VMAX (100%).
+//                              Works for ANY chemistry / any VMAX.
+//                              Recommended when your cell does not reach
+//                              4.20V (custom charger, BMS, etc.).
+//
+//   BATTERY_CURVE_LIPO_REAL -> piecewise approximation of a 1S LiPo
+//                              discharge curve, hardcoded around 4.20V.
+//                              Only valid if BATTERY_VMAX is ~4.20V.
+//
 byte getBatteryPercent(float v) {
+#ifdef BATTERY_CURVE_LIPO_REAL
+  // Realistic 1S LiPo discharge curve. Breakpoints assume 4.20V full.
   if (v >= 4.20f) return 100;
   if (v >= 4.10f) return  90 + (byte)((v - 4.10f) / 0.10f * 10);
   if (v >= 4.00f) return  80 + (byte)((v - 4.00f) / 0.10f * 10);
@@ -87,6 +79,12 @@ byte getBatteryPercent(float v) {
   if (v >= 3.30f) return   2 + (byte)((v - 3.30f) / 0.10f * 3);
   if (v >= BATTERY_VMIN) return (byte)((v - BATTERY_VMIN) / (3.30f - BATTERY_VMIN) * 2);
   return 0;
+#else
+  // Linear interpolation (default). Works with any VMAX/VMIN values.
+  if (v >= BATTERY_VMAX) return 100;
+  if (v <= BATTERY_VMIN) return 0;
+  return (byte)((v - BATTERY_VMIN) / (BATTERY_VMAX - BATTERY_VMIN) * 100.0f + 0.5f);
+#endif
 }
 
 // Smoothed battery percent reading: avoids the displayed value bouncing

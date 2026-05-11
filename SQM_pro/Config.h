@@ -245,21 +245,63 @@ const char* ota_password = OTA_PASSWORD;
 //   4) Update the value below and reflash.
 //
 // Initial calibration from user measurement:
-//   - Vmultimeter = 3.99 V
-//   - displayed   = 0.06 V (with old formula raw/1023*11)
-//   - so raw      = 0.06 * 1023 / 11 ~= 5.58
-//   - factor      = 3.99 / 5.58 ~= 0.715 V per raw unit
+//   - Vmultimetre = 3.99 V (LiPo Yunique chargee a 100% via B6 V3)
+//   - raw_avg empirique ~ 5.12 (ESP8266 ADC)
+//   - factor       = 3.99 / 5.12 ~= 0.78 V per raw unit
 //
-#define BATTERY_VOLTS_PER_RAW   0.715f
+#define BATTERY_VOLTS_PER_RAW   0.78f
 //
-// 18650 Li-Ion typical voltage range
-#define BATTERY_VMAX            4.20f   // V - fully charged
+// Battery voltage range (your specific cell).
+//
+//   BATTERY_VMAX = voltage when YOUR charger says "100% / fully charged"
+//                  (measure with multimeter, may differ from datasheet).
+//                  Examples:
+//                    - Std LiPo 1S + B6/iMax CCCV @ 4.20V cutoff -> 4.20
+//                    - Std LiPo 1S + B6 with conservative 4.00V cutoff -> 4.00
+//                    - Yunique 3000mAh (user setup) measured at 3.99V -> 3.99
+//                    - 18650 Li-Ion stnd -> 4.20
+//                    - LiFePO4 1S -> 3.65
+//   BATTERY_VMIN = voltage at which you consider the cell "empty" (0%).
+//                  Below this you risk damaging the cell.
+//                  Typical 18650/LiPo Co/Mn: 3.00V hard cutoff, 3.20V safe.
+//
+// IMPORTANT: do NOT just keep the LiPo "standard" 4.20V here if your
+// charger only reaches 3.99V or 4.00V. The display will never show 100%
+// otherwise.
+//
+#define BATTERY_VMAX            3.99f   // user's measured "fully charged" V
 #define BATTERY_VMIN            3.00f   // V - cutoff (do NOT discharge below)
 #define BATTERY_LOW_THRESHOLD   3.20f   // V - low-battery warning threshold
 //
 // Number of ADC samples averaged per reading (reduces noise on high-impedance
 // dividers; ESP8266 ADC is only 10-bit and rather noisy by itself).
 #define BATTERY_OVERSAMPLES     8
+
+// -----------------------------------------------------------------------------
+// Battery percent curve selector
+// -----------------------------------------------------------------------------
+// Two strategies to convert tension -> percent:
+//
+//   BATTERY_CURVE_LINEAR    : simple proportional interpolation between
+//                             BATTERY_VMIN (0%) and BATTERY_VMAX (100%).
+//                             RECOMMENDED if your cell does not reach
+//                             4.20V (custom charger profile, protected
+//                             BMS with lower cutoff, non-standard LiPo,
+//                             Li-Ion 18650 with safety limit, etc.).
+//                             Just set BATTERY_VMAX to the voltage your
+//                             multimeter reads when your charger says
+//                             "100% / fully charged".
+//
+//   BATTERY_CURVE_LIPO_REAL : piecewise approximation of a typical 1S
+//                             LiPo discharge curve (plateau 3.7-4.0V,
+//                             knee at 3.6V, cutoff 3.0V). Hardcoded
+//                             breakpoints, only valid if BATTERY_VMAX
+//                             is close to 4.20V.
+//
+// Default: LINEAR (works with any chemistry / any VMAX).
+//
+#define BATTERY_CURVE_LINEAR
+//#define BATTERY_CURVE_LIPO_REAL
 
 // -----------------------------------------------------------------------------
 // SQM Calibration certificate (optional, cosmetic)

@@ -5,6 +5,77 @@ Tous les changements notables de ce projet sont documentés dans ce fichier.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ;
 le projet suit le [versionnage sémantique](https://semver.org/lang/fr/).
 
+## [v2.2.12] — 2026-05-08
+
+### 🐛 Corrigé — Courbe LiPo inadaptée aux cellules non-standard
+
+**Découverte utilisateur** : sa LiPo Yunique 3000 mAh chargée à 100% via
+**B6 V3 Smart Charger** atteint **3.99 V** au multimètre (pas 4.20 V).
+Plusieurs explications possibles (profil B6 conservateur, BMS interne
+avec cutoff bas, chimie spécifique du fabricant), mais l'important est
+que **la réalité hardware n'est pas la spec LiPo standard**.
+
+**Impact en v2.2.11** : la courbe piecewise avait des breakpoints
+hardcodés à 4.20 V → la cellule de l'utilisateur ne pouvait **jamais**
+afficher 100% (plafonnée à ~80% à 3.99V).
+
+### ✨ Ajouté — Sélecteur de courbe `BATTERY_CURVE_*`
+
+Nouvelle macro dans `Config.h` pour choisir la stratégie de calcul du % :
+
+```cpp
+#define BATTERY_CURVE_LINEAR       // simple proportionnel (par défaut)
+//#define BATTERY_CURVE_LIPO_REAL  // courbe piecewise LiPo 1S "standard"
+```
+
+| Mode | Quand l'utiliser |
+|---|---|
+| **LINEAR** ✅ default | Cellule custom, VMAX ≠ 4.20V, chimie non-standard, 18650 avec BMS, LiFePO4, etc. |
+| **LIPO_REAL** | Cellule LiPo 1S "pure" qui charge réellement à 4.20V |
+
+### 🔧 Corrigé — `BATTERY_VMAX` à 3.99 V par défaut
+
+Adapté au setup utilisateur réel (Yunique 3000 mAh + B6 V3). Documenté
+dans `Config.h` que l'utilisateur doit mettre la valeur **réellement
+mesurée au multimètre** quand son chargeur dit "100% / fully charged".
+
+Exemples ajoutés en commentaire :
+- LiPo 1S + B6 standard 4.20V cutoff → 4.20
+- LiPo 1S + B6 conservatif 4.00V cutoff → 4.00
+- Yunique 3000 mAh user setup → 3.99
+- 18650 Li-Ion standard → 4.20
+- LiFePO4 1S → 3.65
+
+### 🔧 Corrigé — `BATTERY_VOLTS_PER_RAW = 0.78f` par défaut
+
+Adapté à la calibration empirique réelle de l'utilisateur (au lieu de
+l'exemple historique 0.715).
+
+### 📐 Tableau comparatif des modes (sur cellule VMAX=3.99V)
+
+| Tension | LINEAR (v2.2.12, défaut) | LIPO_REAL (ne marche pas ici) |
+|---------|--------------------------|-------------------------------|
+| 3.99 V  | **100 %** ✅             | 79 % ❌ jamais à 100%         |
+| 3.80 V  | 81 %                     | 55 %                          |
+| 3.70 V  | 71 %                     | 35 %                          |
+| 3.50 V  | 51 %                     | 10 %                          |
+| 3.20 V  | 20 %                     | 2 %                           |
+| 3.00 V  | 0 % (cutoff)             | 0 %                           |
+
+### 🛰️ Note hardware utilisateur
+
+- **GPS NEO-6M** : repassé sur le 3.3V régulé du NodeMCU (pas plus direct LiPo)
+- **MT3608** : capable **2A** (pas 1A — confirmation utilisateur)
+- **TP4056 LEDs rouge + bleue simultanément** : comportement normal en
+  fin de charge avec consommation aval (cellule pleine, faible courant
+  résiduel). Pas un défaut.
+
+### Fichiers modifiés
+- `SQM_pro/Config.h` : sélecteur `BATTERY_CURVE_*`, VMAX/VOLTS_PER_RAW user
+- `SQM_pro/MyLib.ino` : `getBatteryPercent()` supporte les deux modes
+
+---
+
 ## [v2.2.11] — 2026-05-08
 
 ### 🔋 Nouveau setup hardware utilisateur (validé)
