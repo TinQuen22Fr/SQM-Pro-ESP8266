@@ -246,10 +246,10 @@ const char* ota_password = OTA_PASSWORD;
 //
 // Initial calibration from user measurement:
 //   - Vmultimetre = 3.99 V (LiPo Yunique chargee a 100% via B6 V3)
-//   - raw_avg empirique ~ 5.12 (ESP8266 ADC)
-//   - factor       = 3.99 / 5.12 ~= 0.78 V per raw unit
+//   - raw_avg empirique mesure via CP2102 ~ 6.82
+//   - factor       = 3.99 / 6.82 ~= 0.585 V per raw unit
 //
-#define BATTERY_VOLTS_PER_RAW   0.78f
+#define BATTERY_VOLTS_PER_RAW   0.585f
 //
 // Battery voltage range (your specific cell).
 //
