@@ -54,10 +54,57 @@ float readBatteryVoltage() {
 // Linear estimation between BATTERY_VMIN (0%) and BATTERY_VMAX (100%).
 // Note: 18650 discharge curve is NOT linear, but this is acceptable for a
 // rough indication. A LiPo gauge IC (MAX17048 etc.) would be more accurate.
+//
+// v2.2.11: replaced naive linear interpolation by a piecewise approximation
+// of a typical 1S LiPo discharge curve at light load (~50-200mA). The curve
+// is much flatter between 3.7-4.0V (the "plateau") and drops rapidly below
+// 3.6V (the "knee"). The previous linear model gave 82% at 3.99V which was
+// technically correct but counter-intuitive (a freshly-charged LiPo is at
+// 4.20V, not 3.99V).
+//
+// Curve points (V, %): based on combined Adafruit/Sparkfun/Maxim datasheets
+//   4.20 -> 100%
+//   4.10 ->  90%
+//   4.00 ->  80%
+//   3.90 ->  70%
+//   3.80 ->  55%
+//   3.70 ->  35%
+//   3.60 ->  20%
+//   3.50 ->  10%
+//   3.40 ->   5%
+//   3.30 ->   2%
+//   3.00 ->   0%
 byte getBatteryPercent(float v) {
-  if (v >= BATTERY_VMAX) return 100;
-  if (v <= BATTERY_VMIN) return 0;
-  return (byte)((v - BATTERY_VMIN) / (BATTERY_VMAX - BATTERY_VMIN) * 100.0f + 0.5f);
+  if (v >= 4.20f) return 100;
+  if (v >= 4.10f) return  90 + (byte)((v - 4.10f) / 0.10f * 10);
+  if (v >= 4.00f) return  80 + (byte)((v - 4.00f) / 0.10f * 10);
+  if (v >= 3.90f) return  70 + (byte)((v - 3.90f) / 0.10f * 10);
+  if (v >= 3.80f) return  55 + (byte)((v - 3.80f) / 0.10f * 15);
+  if (v >= 3.70f) return  35 + (byte)((v - 3.70f) / 0.10f * 20);
+  if (v >= 3.60f) return  20 + (byte)((v - 3.60f) / 0.10f * 15);
+  if (v >= 3.50f) return  10 + (byte)((v - 3.50f) / 0.10f * 10);
+  if (v >= 3.40f) return   5 + (byte)((v - 3.40f) / 0.10f * 5);
+  if (v >= 3.30f) return   2 + (byte)((v - 3.30f) / 0.10f * 3);
+  if (v >= BATTERY_VMIN) return (byte)((v - BATTERY_VMIN) / (3.30f - BATTERY_VMIN) * 2);
+  return 0;
+}
+
+// Smoothed battery percent reading: avoids the displayed value bouncing
+// around with ADC noise (especially with a switching regulator like the
+// MT3608 boost converter that injects HF noise on Vin).
+// Update only if the new value differs by more than 2% from the last shown.
+static byte _last_shown_pct = 255;  // 255 = not initialized
+byte getBatteryPercentSmoothed(float v) {
+  byte raw = getBatteryPercent(v);
+  if (_last_shown_pct == 255) {
+    _last_shown_pct = raw;
+  } else {
+    int delta = (int)raw - (int)_last_shown_pct;
+    if (delta > 2 || delta < -2) {
+      _last_shown_pct = raw;
+    }
+  }
+  return _last_shown_pct;
 }
 
 // Returns the raw ADC reading averaged over BATTERY_OVERSAMPLES samples.
@@ -254,7 +301,7 @@ void DisplWait(char blk) {
   // failure in v2.2.8, fixed in v2.2.9).
   // -------------------------------------------------------------------------
   float vbat   = readBatteryVoltage();
-  byte  pcent  = getBatteryPercent(vbat);
+  byte  pcent  = getBatteryPercentSmoothed(vbat);
   if (digitalRead(ModePin)) {  // HIGH = WiFi/normal mode -> debug allowed
     float rawAvg = readBatteryRawAvg();
     Serial.print("[BAT] raw_avg=");

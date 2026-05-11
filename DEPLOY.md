@@ -627,6 +627,117 @@ si vous oubliez d'éteindre le capteur le matin, il continuera à
 fonctionner mais ne polluera pas votre dashboard avec des données de
 journée.
 
+### 12.7. Schéma d'alimentation recommandé (LiPo 1S + boost converter) ⚡
+
+Validé en v2.2.11 sur un assemblage portable avec **LiPo 3.7V 1S 3000 mAh** :
+
+```
+                ┌──────────────────────────────────────────────────────┐
+LiPo 3.7V       │                                                      │
+3000 mAh   ─B+──┤ TP4056 (USB-C) ──Out+──┐                             │
+1S avec BMS  ─B-┤                Out-──┐ │                             │
+                └──────────────────────│─│────────┘                    │
+                                       │ │                             │
+                                       ▼ ▼                             │
+                                  ┌───────────────┐                    │
+                                  │   MT3608      │ (boost @ 5V réglé) │
+                                  │   IN+ / IN-   │                    │
+                                  └─OUT+──OUT-────┘                    │
+                                     │     │                           │
+                                     ▼     │                           │
+                                  [Switch  │                           │
+                                   ON/OFF] │                           │
+                                     │     │                           │
+                                     ▼     ▼                           │
+                                  ┌───────────────┐                    │
+                                  │  NodeMCU      │                    │
+                                  │  Vin    GND   │ → AMS1117 → 3.3V ✓ │
+                                  └───────────────┘                    │
+                                                                       │
+B+ ──┬──[100kΩ]──── A0 (NodeMCU)                                       │
+     │             [100kΩ]                                             │
+     │                │                                                │
+     │           GND (NodeMCU, pas Bat- du TP4056 !)                   │
+     │                                                                 │
+GND module GPS NEO-6M ◄─────────────────────────────────────────────── │ (alim directe LiPo)
+B+ module GPS NEO-6M  ◄─── B+
+```
+
+**Points clés** :
+
+- ✅ **TP4056 USB-C** = chargeur LiPo dédié, BMS intégré sur la cellule
+- ✅ **MT3608 boost réglé à 5V** = résout le problème de dropout de l'AMS1117
+  quand la LiPo descend sous 4.5V (Vin reste à 5V même quand la LiPo est à 3.2V)
+- ✅ **Pont diviseur 100k+100k sur B+** = mesure la tension cellule réelle
+  (pas la tension boostée 5V), GND du diviseur sur GND NodeMCU (pas sur Bat-)
+- ✅ **GPS NEO-6M alimenté direct LiPo** = simplification, le module a son
+  propre régulateur interne
+- ⚠️ **Bruit ADC** : le MT3608 est un convertisseur switching à ~1.2 MHz.
+  Avec un pont diviseur haute impédance, on capte du bruit HF.
+  **Fix recommandé** : ajouter un condensateur **100 nF céramique** entre
+  A0 et GND, au plus près du pin A0. ~0.05€, 1 minute de soudure, lecture
+  ADC stabilisée.
+
+### 12.8. Calibration de la jauge batterie (LiPo 1S)
+
+Procédure via **adaptateur USB-Série externe** (CP2102, FTDI, etc.) :
+
+1. **Câbler l'USB-série au NodeMCU** :
+   ```
+   USB-Série  ──→  NodeMCU
+   GND        ──   GND
+   TX         ──   RX (GPIO3, D9)
+   RX         ──   TX (GPIO1, D10)
+   ❌ NE PAS connecter le 3.3V/5V de l'USB-série ❌
+   ```
+2. **Alimenter le SQM uniquement par la LiPo** (USB NodeMCU débranché)
+3. Allumer le SQM en **mode WiFi** (interrupteur côté D3 ou centre)
+4. Ouvrir le moniteur série de l'adaptateur à **115200 baud**
+5. Repérer la ligne **`[BAT] raw_avg=XX.XX  V=Y.YYY  pct=ZZ`** émise à
+   chaque cycle (~5 secondes)
+6. **Mesurer B+** au multimètre directement sur les pads B+ du TP4056
+7. Calculer :
+   ```
+   BATTERY_VOLTS_PER_RAW = V_multimètre / raw_avg
+   ```
+8. Éditer `SQM_pro/Config.h` ligne ~253 :
+   ```cpp
+   #define BATTERY_VOLTS_PER_RAW   <ta_valeur>f
+   ```
+9. Reflasher
+
+**Astuce** : pour éliminer le bruit, prendre **3 mesures de `raw_avg`**
+espacées de 30s et moyenner. L'oversampling x8 interne aide déjà, mais
+une moyenne externe sur 3 cycles donne une calibration plus stable.
+
+### 12.9. Courbe de décharge LiPo et % batterie
+
+Depuis v2.2.11, le pourcentage utilise une **courbe piecewise** approximant
+la décharge réelle d'une LiPo 1S sous charge légère (~50-200 mA) :
+
+| Tension | % affiché |
+|---------|-----------|
+| 4.20 V  | 100 % (plein) |
+| 4.10 V  |  90 % |
+| 4.00 V  |  80 % |
+| 3.90 V  |  70 % |
+| 3.80 V  |  55 % |
+| 3.70 V  |  35 % |
+| 3.60 V  |  20 % |
+| 3.50 V  |  10 % |
+| 3.40 V  |   5 % |
+| 3.30 V  |   2 % |
+| 3.00 V  |   0 % (cutoff sécurité, le BMS coupera la cellule) |
+
+⚠️ **Surprenant mais réel** : une LiPo à **3.99 V** est à environ **80 %**
+de capacité, pas 95 % ou 100 %. La courbe a un plateau plat entre 3.7-4.1 V
+et chute rapidement sous 3.6 V. Une cellule "pleine" est à **4.20 V**, pas
+3.99 V (qui correspond souvent à une charge incomplète du TP4056 si la
+phase CV n'est pas terminée).
+
+Un lissage hystérésis de ±2 % évite le sautillement de l'affichage dû au
+bruit ADC.
+
 ---
 
 ## 13. Sécurité

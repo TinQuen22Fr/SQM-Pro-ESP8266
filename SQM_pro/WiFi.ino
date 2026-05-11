@@ -82,7 +82,7 @@ void wifi_main(double mpsas, double dmpsas, int temp, byte hum, int pres) {
   String url;
   // Calibrated battery readout (helper defined in MyLib.ino)
   float battery = readBatteryVoltage();
-  byte  battPct = getBatteryPercent(battery);
+  byte  battPct = getBatteryPercentSmoothed(battery);
 
   // Compute lux from the TSL2591 raw channels (optional extra field "L").
   float lux = 0.0f;

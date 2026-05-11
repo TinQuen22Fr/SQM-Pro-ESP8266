@@ -5,6 +5,97 @@ Tous les changements notables de ce projet sont documentés dans ce fichier.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ;
 le projet suit le [versionnage sémantique](https://semver.org/lang/fr/).
 
+## [v2.2.11] — 2026-05-08
+
+### 🔋 Nouveau setup hardware utilisateur (validé)
+
+Chaîne d'alimentation portable refondue :
+```
+LiPo 1S 3000mAh ──→ TP4056 (USB-C) ──→ MT3608 boost @5V ──→ Switch ON/OFF ──→ Vin NodeMCU
+                                                                                 │
+                                                                            AMS1117 → 3.3V propre
+GPS NEO-6M : alimenté directement par la LiPo (B+)
+Pont diviseur 100kΩ+100kΩ : toujours sur B+, GND sur GND NodeMCU (pas sur Bat-)
+```
+
+**Avantages** :
+- ✅ Le **MT3608 boost à 5V** résout le problème de dropout AMS1117 quand
+  la LiPo descend sous 4.5V → l'ADC ne dérive plus avec la tension batterie.
+- ✅ **TP4056 USB-C** = standard moderne, BMS intégré sur la LiPo.
+- ✅ Plus de HT7333 nécessaire.
+
+### 🐛 Corrigé — Pourcentage batterie peu intuitif
+
+**Symptôme** : LiPo à 3.99 V affichait **82 %** au lieu des ~95-100 %
+attendus instinctivement.
+
+**Cause** : interpolation **linéaire** entre VMIN (3.00 V) et VMAX (4.20 V) :
+```
+(3.99 - 3.00) / (4.20 - 3.00) × 100 = 82.5%
+```
+
+Mathématiquement correct, mais **non représentatif de la décharge réelle
+LiPo** (qui a un plateau plat entre 3.7-4.0 V puis chute rapidement sous 3.6 V).
+
+**Fix v2.2.11** : remplacé par une **courbe piecewise** approximant la
+décharge LiPo 1S sous charge légère (~50-200 mA) :
+
+| Tension | % affiché (v2.2.10) | % affiché (v2.2.11) |
+|---------|---------------------|---------------------|
+| 4.20 V  | 100 %               | 100 %               |
+| 4.10 V  | 92 %                | 90 %                |
+| 4.00 V  | 83 %                | 80 %                |
+| 3.90 V  | 75 %                | 70 %                |
+| 3.80 V  | 67 %                | 55 %                |
+| 3.70 V  | 58 %                | **35 %** (knee)     |
+| 3.60 V  | 50 %                | 20 %                |
+| 3.50 V  | 42 %                | 10 %                |
+| 3.40 V  | 33 %                | 5 %                 |
+| 3.30 V  | 25 %                | 2 %                 |
+
+À noter : **une LiPo à 3.99 V est réellement à ~80 % de capacité**. Une cellule
+"pleine" est à 4.20 V exact. Si le TP4056 affiche "charged" autour de 3.95-4.0 V,
+c'est qu'il n'a pas complété sa phase CV (constant voltage).
+
+### ✨ Ajouté — Lissage du pourcentage affiché
+
+`getBatteryPercentSmoothed()` : hystérésis de ±2 %, le pourcentage affiché
+ne change que si la nouvelle lecture diffère de plus de 2 % de la précédente.
+Évite le sautillement dû au bruit ADC (notamment celui injecté par le
+switching du MT3608 à ~1.2 MHz).
+
+### 📄 Documentation `DEPLOY.md` enrichie
+
+- **§12.7** : Schéma d'alimentation LiPo 1S + MT3608 (avec ASCII art)
+- **§12.8** : Procédure de calibration via USB-Série externe (CP2102/FTDI)
+- **§12.9** : Tableau de la courbe de décharge LiPo et explication du
+  pourcentage non-linéaire
+
+### 💡 Recommandation hardware optionnelle
+
+Le MT3608 est un convertisseur switching ~1.2 MHz qui injecte du bruit HF
+sur l'alim. Avec un pont diviseur haute impédance (100k+100k), l'ADC capte
+ce bruit comme une antenne.
+
+**Fix simple** : ajouter un condensateur **100 nF céramique** entre A0 et
+GND, au plus près du pin A0. ~0.05 €, 1 minute de soudure, lecture ADC
+significativement plus stable (élimine la jitter "une fois sur deux").
+
+### 🐛 Note BME280 (hors firmware)
+
+L'utilisateur a constaté que ses BME280 récents sont des **clones / fakes**
+(certaines unités soudées à l'envers, d'autres non-détectées sur I²C avec
+message "No humidity"). Le module **AZ-Delivery** (acheté sur Amazon) est
+confirmé fonctionnel. À acquérir de nouveau plus tard depuis une source
+fiable. Aucun changement firmware nécessaire.
+
+### Fichiers modifiés
+- `SQM_pro/MyLib.ino` : nouvelle courbe LiPo + `getBatteryPercentSmoothed()`
+- `SQM_pro/WiFi.ino` : utilise la version lissée pour le push API
+- `DEPLOY.md` : §12.7, §12.8, §12.9 ajoutées
+
+---
+
 ## [v2.2.10] — 2026-05-08
 
 ### 🐛 Corrigé — Température `cx` à `000.0C` à froid
