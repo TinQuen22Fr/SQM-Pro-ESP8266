@@ -59,15 +59,17 @@ jobs:
 
       - name: Install required libraries
         run: |
-          # Libs externes utilisées par le sketch (voir #include <...> dans
-          # SQM_pro/*.ino, *.h, *.cpp). Les libs intégrées au core ESP8266
-          # (ESP8266WiFi, Wire, EEPROM, ArduinoOTA, WiFiClientSecure) ne
-          # sont pas listées ici car installées automatiquement avec le
-          # core esp8266:esp8266.
+          # Libs externes utilisées par le sketch (voir #include <...> ET
+          # #include "..." dans SQM_pro/*.ino, *.h, *.cpp). Les libs
+          # intégrées au core ESP8266 (ESP8266WiFi, Wire, EEPROM,
+          # ArduinoOTA, WiFiClientSecure, SoftwareSerial) ne sont pas
+          # listées ici car installées automatiquement avec le core
+          # esp8266:esp8266.
           arduino-cli lib install \
             "Adafruit Unified Sensor" \
             "BMx280MI" \
-            "U8g2"
+            "U8g2" \
+            "TinyGPSPlus"
 
       - name: Show available boards & libs (debug)
         run: |
