@@ -1,0 +1,150 @@
+name: Build Firmware (ESP8266)
+
+# ----------------------------------------------------------------------------
+# Compile automatiquement le firmware SQM Pro (NodeMCU Lolin V3 / ESP8266)
+# à chaque modification du code source, et publie le .bin en :
+#   - artifact GitHub (téléchargeable depuis l'onglet Actions, 90 jours)
+#   - release "latest" (sur push main, mise à jour à chaque commit)
+#   - release versionnée (sur push d'un tag vX.Y.Z)
+#
+# Le manifest ESP Web Tools de l'app Magnitude-Tracker pointe sur :
+#   https://github.com/TinQuen22Fr/SQM-Pro-ESP8266/releases/latest/download/sqm-pro-esp8266.bin
+# → dès qu'une nouvelle release sort, l'app propose automatiquement le
+#   nouveau firmware via la page /flasher, sans modification côté app.
+#
+# Workflow d'utilisation :
+#   # Build de test (push main, pas de release versionnée)
+#   git push origin main
+#
+#   # Release officielle versionnée
+#   git tag v2.3.0
+#   git push origin main --tags
+# ----------------------------------------------------------------------------
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '**.ino'
+      - '**.h'
+      - '**.cpp'
+      - '.github/workflows/build-firmware.yml'
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write   # Requis pour softprops/action-gh-release
+
+jobs:
+  build:
+    name: Compile .bin (NodeMCU Lolin V3 / esp8266:esp8266:nodemcuv2)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup arduino-cli
+        uses: arduino/setup-arduino-cli@v2
+
+      - name: Add ESP8266 board core
+        run: |
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls \
+            https://arduino.esp8266.com/stable/package_esp8266com_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp8266:esp8266
+
+      - name: Install required libraries
+        run: |
+          # Libs externes utilisées par le sketch (voir #include <...> dans
+          # SQM_pro/*.ino, *.h, *.cpp). Les libs intégrées au core ESP8266
+          # (ESP8266WiFi, Wire, EEPROM, ArduinoOTA, WiFiClientSecure) ne
+          # sont pas listées ici car installées automatiquement avec le
+          # core esp8266:esp8266.
+          arduino-cli lib install \
+            "Adafruit Unified Sensor" \
+            "BMx280MI" \
+            "U8g2"
+
+      - name: Show available boards & libs (debug)
+        run: |
+          arduino-cli board listall esp8266 | head -20
+          arduino-cli lib list
+
+      - name: Compile
+        run: |
+          # Le sketch principal est dans le dossier SQM_pro/.
+          # Arduino-cli regroupe automatiquement tous les .ino/.h/.cpp
+          # du dossier comme un seul sketch (convention Arduino).
+          arduino-cli compile \
+            --fqbn esp8266:esp8266:nodemcuv2:eesz=4M2M,baud=921600 \
+            --output-dir build \
+            --warnings none \
+            --verbose \
+            SQM_pro/
+
+      - name: Locate and rename the produced .bin
+        id: bin
+        run: |
+          # Arduino-cli sort un fichier {sketch_name}.ino.bin dans build/.
+          # On le renomme pour qu'il corresponde au nom attendu par le
+          # manifest ESP Web Tools de l'app : sqm-pro-esp8266.bin
+          SRC=$(ls build/*.ino.bin | head -1)
+          if [ -z "$SRC" ]; then
+            echo "::error::Aucun .bin produit après compilation."
+            ls -lh build/
+            exit 1
+          fi
+          cp "$SRC" build/sqm-pro-esp8266.bin
+          echo "bin=build/sqm-pro-esp8266.bin" >> "$GITHUB_OUTPUT"
+          echo "=== Fichiers produits ==="
+          ls -lh build/
+          echo ""
+          echo "=== Taille du .bin final ==="
+          ls -lh build/sqm-pro-esp8266.bin
+
+      - name: Upload artifact (CI build, 90 jours)
+        uses: actions/upload-artifact@v4
+        with:
+          name: sqm-pro-esp8266-firmware
+          path: ${{ steps.bin.outputs.bin }}
+          retention-days: 90
+
+      # ----------------------------------------------------------------------
+      # Release "latest" : MAJ à chaque push sur main (en mode prerelease).
+      # Permet à l'app web de pointer toujours sur le dernier build dev
+      # via .../releases/latest/download/sqm-pro-esp8266.bin
+      # ----------------------------------------------------------------------
+      - name: Update / create "latest" release (push main)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: "Latest build (main)"
+          body: |
+            Build automatique du dernier commit `main`.
+
+            Téléchargez `sqm-pro-esp8266.bin` ci-dessous et flashez-le via
+            [l'outil de flashage en ligne](https://sqm.quentin-astro.fr/flasher)
+            ou via l'IDE Arduino.
+          files: build/sqm-pro-esp8266.bin
+          prerelease: true
+          make_latest: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ----------------------------------------------------------------------
+      # Release officielle versionnée : déclenchée par un push de tag v*.
+      # ----------------------------------------------------------------------
+      - name: Create versioned GitHub Release (on tag v*)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/sqm-pro-esp8266.bin
+          generate_release_notes: true
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
