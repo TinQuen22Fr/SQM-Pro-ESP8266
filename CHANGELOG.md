@@ -5,6 +5,85 @@ Tous les changements notables de ce projet sont documentés dans ce fichier.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ;
 le projet suit le [versionnage sémantique](https://semver.org/lang/fr/).
 
+## [v2.2.13] — 2026-05-08
+
+### 🆕 3 nouvelles commandes UDM extraites du code source officiel
+
+Analyse du code source UDM v1.0.0.383 (Pascal/Lazarus, ~50 fichiers `.pas`)
+téléchargé depuis `unihedron.com`. Inventaire complet des ~80 commandes
+envoyées par UDM. La plupart ne nous concernent pas (data logger interne,
+LED RGB, locks hardware, snow detection — toutes spécifiques au SQM-LU-DL).
+
+**3 commandes ont été identifiées comme pertinentes pour notre DIY :**
+
+#### 1. 🌍 `g0x` — Position GPS (NMEA GGA)
+
+UDM attend une réponse au format NMEA GGA délimité par virgules :
+```
+GGA,HHMMSS.000,DDMM.MMMM,N/S,DDDMM.MMMM,E/W,FixQual,SatCount,
+```
+
+Notre DIY a un module **NEO-6M GPS** qui parse déjà ces données dans
+`GPS.ino` (`g_lat`, `g_lng`, `g_hour`, etc.). On les renvoie à UDM qui
+**affichera notre position GPS dans son panel "GPS Response"**.
+
+🎯 **Bonus inattendu** : le **SQM-LU officiel** n'a PAS de GPS (sauf
+variant DLS très rare). Notre DIY devient ainsi **plus complet** que le
+modèle commercial sur ce point précis.
+
+#### 2. ⚡ `U1x` — Variant rapide de `ux`
+
+UDM utilise cette commande pour son **stress test de temps de réponse**
+(envoyée 50 fois en boucle avec 32 ms de sleep). Format de réponse
+identique à `ux` (unaveraged reading). Implémentée comme alias.
+
+#### 3. 🔄 `0x19` (EM byte) — Soft reset
+
+UDM envoie l'octet de contrôle **EM (End-of-Medium, 0x19)** seul pour
+soft-reset le device avant un stress test. Detecté en amont du parser
+de commandes (car pas de terminateur `x`), déclenche `ESP.restart()`.
+Sans ce handler, UDM voyait son test foirer car notre device ne
+redémarrait pas comme prévu.
+
+### Commandes UDM **inutiles** pour notre DIY (documentées pour mémoire)
+
+| Catégorie | Pourquoi non implémentées |
+|---|---|
+| `L*x` (≈18 cmds) | Data logger interne flash + RTC (DL variant uniquement) |
+| `K*x` (≈10 cmds) | Système de verrouillage hardware (lock/unlock) |
+| `f*x` | LED RGB color cycling (V variant) |
+| `rfx`, `rFx` | Snow detection LED ratio |
+| `vtx` | Vector tilt (nécessite accéléromètre) |
+| `Max`, `max` | Memory map access propriétaire |
+| `A2A/F/R`, `A40/41` | Variants logging params |
+| `g1x`-`gCx` | GPS sub-cmds (commentés dans UDM, jamais envoyés) |
+
+### Tests recommandés post-flash
+
+1. **Vérifier `g0x`** dans le moniteur série 115200 :
+   ```
+   g0x -> GGA,083522.000,4815.2374,N,00224.8915,E,1,07,
+   ```
+   (valeurs réelles si tu as un fix GPS, ou tout à 0 sinon)
+2. **Vérifier `U1x`** :
+   ```
+   U1x -> u, 10.42m,0000000000Hz,0000000005c,0000000.000s, 022.8C
+   ```
+3. **Vérifier soft reset** : envoie d'un octet `0x19` brut (via Python
+   par ex.) → le device doit reboot dans ~50 ms.
+
+### Effet UDM attendu
+
+Dans **UDM**, après reload :
+- Onglet **GPS** (ou panel position) : ta position GPS du DIY s'affiche
+- Stress test (caché dans dev menu) : fonctionne sans timeout
+- Reset depuis UDM : effectif
+
+### Fichiers modifiés
+- `SQM_pro/SQM_pro.ino` : handlers `g0`, `U1`, et byte `0x19`
+
+---
+
 ## [v2.2.12] — 2026-05-08
 
 ### 🐛 Corrigé — Courbe LiPo inadaptée aux cellules non-standard

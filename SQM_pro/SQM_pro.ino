@@ -301,6 +301,19 @@ void loop() {
       if (digitalRead(ModePin)) break; // exit USB mode
 
       // ----------------------------------------------------------------------
+      // Soft reset handling (v2.2.13): UDM may send a single byte 0x19 (EM,
+      // End-of-Medium) to soft-reset the device (used by their response-time
+      // tester before sending 50x U1x). We detect it BEFORE the command
+      // parser because 0x19 has no 'x' terminator -> would otherwise block
+      // readStringUntil for 1s.
+      // ----------------------------------------------------------------------
+      if (Serial.peek() == 0x19) {
+        Serial.read();  // consume it
+        delay(50);
+        ESP.restart();
+      }
+
+      // ----------------------------------------------------------------------
       // PERF FIX (v2.2.6) : lire la commande EN PREMIER, avant toute lecture
       // capteur lente (TSL2591 takeReading peut bloquer jusqu'a ~1s en gain
       // eleve). UDM "Find" a un timeout court (~500ms) : si on lit les
@@ -312,6 +325,7 @@ void loop() {
       // Determine si la commande necessite des donnees SQM (TSL2591 ~1s)
       bool needsSqmData = command.equals("r")
                        || command.equals("u")
+                       || command.equals("U1")   // v2.2.13: stress-test variant of 'u'
                        || command.equals("w");
 
       // Determine si la commande necessite seulement la temperature BME280
@@ -404,6 +418,52 @@ void loop() {
                      + counter_string
                      + "c,0000000.000s,"
                      + temp_string + 'C');
+
+      // U1x: unaveraged reading variant used by UDM "response-time tester"
+      // (sends U1x 50x in a row with 32ms sleep). Same format as 'u' reading.
+      } else if (command.equals("U1")) {
+        Serial.println("u," + sqm_string
+                     + "m,0000000000Hz,"
+                     + counter_string
+                     + "c,0000000.000s,"
+                     + temp_string + 'C');
+
+      // g0x: GPS position request (NMEA GGA-like format)
+      // UDM parses this as comma-delimited:
+      //   pieces[0] = title (ignored)
+      //   pieces[1] = HHMMSS.sss UTC time
+      //   pieces[2] = ddmm.mmmm latitude
+      //   pieces[3] = N or S
+      //   pieces[4] = dddmm.mmmm longitude
+      //   pieces[5] = E or W
+      //   pieces[6] = fix quality (0=invalid, 1=GPS SPS valid)
+      //   pieces[7] = satellites used count
+      // v2.2.13: this command is unique to our DIY -- the genuine SQM-LU does
+      // NOT have GPS (except the DLS variant). UDM will display the position
+      // in the GPS Response panel.
+      } else if (command.equals("g0")) {
+#ifdef GPS_ON
+        char gpsBuf[120];
+        double lat_abs = (g_lat < 0) ? -g_lat : g_lat;
+        int    lat_deg = (int)lat_abs;
+        float  lat_min = (float)(lat_abs - lat_deg) * 60.0f;
+        char   lat_ns  = (g_lat < 0) ? 'S' : 'N';
+        double lng_abs = (g_lng < 0) ? -g_lng : g_lng;
+        int    lng_deg = (int)lng_abs;
+        float  lng_min = (float)(lng_abs - lng_deg) * 60.0f;
+        char   lng_ew  = (g_lng < 0) ? 'W' : 'E';
+        byte   fix     = GPS_sync ? 1 : 0;
+        snprintf(gpsBuf, sizeof(gpsBuf),
+                 "GGA,%02d%02d%02d.000,%02d%07.4f,%c,%03d%07.4f,%c,%d,%02d,",
+                 g_hour, g_minute, g_second,
+                 lat_deg, lat_min, lat_ns,
+                 lng_deg, lng_min, lng_ew,
+                 (int)fix, (int)g_sat);
+        Serial.println(gpsBuf);
+#else
+        // GPS not compiled in: return empty GGA so UDM doesn't time out
+        Serial.println("GGA,000000.000,0000.0000,N,00000.0000,E,0,00,");
+#endif
 
 #ifdef EXTENDET_PROTOCOL_ON
       // Extension request for weather information
