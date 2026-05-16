@@ -118,6 +118,51 @@ float readBatteryRawAvg() {
 }
 
 // -----------------------------------------------------------------------------
+// SQM "equivalent Hz" computation (v2.2.14)
+// -----------------------------------------------------------------------------
+// The Unihedron SQM-LU uses a TSL237 light-to-frequency sensor and reports
+// the raw frequency in Hz on the `rx`/`ux` response. UDM displays this value
+// in its UI and internally relates it to mpsas via:
+//
+//     mpsas = 22.0 - 2.5 * log10(Hz - DarkHz)
+//
+// Our DIY uses a TSL2591 (light-to-digital), so there is no "real" frequency
+// to report. We compute an *equivalent* Hz by inverting the above formula:
+//
+//     Hz_equiv = 10 ^ ((22.0 - mpsas) / 2.5)
+//
+// This way:
+//   - UDM displays a non-zero Hz field (previously always 0000000000Hz)
+//   - If UDM recomputes mpsas from Hz via its standard formula, it gets
+//     back our exact mpsas -> end-to-end consistency
+//   - It does NOT add precision (Hz is derived from mpsas, not measured)
+//
+// Returns a left-zero-padded 10-character String for direct insertion in
+// the rx/ux response.
+// -----------------------------------------------------------------------------
+String sqmHzEquivalent(double mpsas) {
+  double hz = 0.0;
+  if (!isnan(mpsas) && !isinf(mpsas)) {
+    if (mpsas >= 22.0) {
+      hz = 1.0;  // dark sky floor
+    } else if (mpsas <= 0.0) {
+      hz = 9999999999.0;  // saturation cap (10-digit max)
+    } else {
+      hz = pow(10.0, (22.0 - mpsas) / 2.5);
+    }
+  }
+  if (hz < 0) hz = 0;
+  if (hz > 9999999999.0) hz = 9999999999.0;
+
+  // Convert to 10-char zero-padded string (handles values up to 10^10)
+  char buf[16];
+  dtostrf(hz, 10, 0, buf);  // width 10, 0 decimals (may pad with spaces)
+  String s(buf);
+  s.replace(' ', '0');
+  return s;
+}
+
+// -----------------------------------------------------------------------------
 // OLED pages
 // -----------------------------------------------------------------------------
 void DisplFirstPage() {

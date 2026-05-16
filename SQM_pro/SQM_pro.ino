@@ -336,6 +336,7 @@ void loop() {
       String sqm_string  = "";
       String temp_string = "";
       String counter_string = "";
+      String hz_string = "0000000000"; // SQM-LU equivalent Hz (computed below for r/u/U1)
 
       if (needsSqmData) {
         ReadWeather();
@@ -354,6 +355,9 @@ void loop() {
         while (temp_string.length() < 5) temp_string = '0' + temp_string;
         _sign = (temp < 0) ? '-' : ' ';
         temp_string = _sign + temp_string;
+
+        // v2.2.14: compute SQM-LU equivalent Hz from current mpsas
+        hz_string = sqmHzEquivalent(sqm.mpsas);
       } else if (needsTempOnly) {
         // BME280 lecture rapide (sans sqm.takeReading)
         ReadWeather();
@@ -406,7 +410,7 @@ void loop() {
       // Reading request
       } else if (command.equals("r")) {
         Serial.println("r," + sqm_string
-                     + "m,0000000000Hz,"
+                     + "m," + hz_string + "Hz,"
                      + counter_string
                      + "c,0000000.000s,"
                      + temp_string + 'C');
@@ -414,7 +418,7 @@ void loop() {
       // Unaveraged reading request
       } else if (command.equals("u")) {
         Serial.println("u," + sqm_string
-                     + "m,0000000000Hz,"
+                     + "m," + hz_string + "Hz,"
                      + counter_string
                      + "c,0000000.000s,"
                      + temp_string + 'C');
@@ -423,7 +427,7 @@ void loop() {
       // (sends U1x 50x in a row with 32ms sleep). Same format as 'u' reading.
       } else if (command.equals("U1")) {
         Serial.println("u," + sqm_string
-                     + "m,0000000000Hz,"
+                     + "m," + hz_string + "Hz,"
                      + counter_string
                      + "c,0000000.000s,"
                      + temp_string + 'C');

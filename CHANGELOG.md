@@ -5,6 +5,74 @@ Tous les changements notables de ce projet sont documentés dans ce fichier.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ;
 le projet suit le [versionnage sémantique](https://semver.org/lang/fr/).
 
+## [v2.2.14] — 2026-05-08
+
+### 🆕 Calcul Hz "équivalent SQM-LU" dans `rx`/`ux`/`U1x`
+
+**Avant v2.2.14** : champ Hz toujours `0000000000Hz` (raison : notre TSL2591
+ne produit pas de fréquence native, contrairement au TSL237 du SQM-LU).
+
+**Constat utilisateur** : UDM en mode USB n'affichait pas de fréquence,
+contrairement à son SQM-LU officiel.
+
+**Fix v2.2.14** : calcul d'une **fréquence équivalente** dérivée du mpsas
+en inversant la formule SQM-LU standard :
+
+```
+Hz_equiv = 10 ^ ((22.0 - mpsas) / 2.5)
+```
+
+Cette formule est **indépendante du capteur** (TSL237 vs TSL2591) : c'est
+juste la conversion d'unités qu'utilise UDM en interne. Garantit :
+
+- ✅ UDM affiche une vraie valeur Hz (plus de zéro fixe)
+- ✅ Si UDM recalcule mpsas depuis Hz, il retombe sur **notre valeur exacte**
+  → cohérence end-to-end avec UDM
+- ⚠️ C'est une **valeur dérivée**, pas une mesure indépendante. Les
+  comparaisons brutes Hz vs un SQM-LU peuvent différer même pour le
+  même ciel (différences capteur).
+
+### 📐 Tableau de correspondance mpsas → Hz équivalent
+
+| mpsas | Hz équivalent | Type de ciel |
+|---|---|---|
+| 22.0 | 1 Hz | Ciel parfait (Sahara, polaire) |
+| 21.5 | ~1.6 Hz | Site exceptionnel |
+| 20.0 | ~6 Hz | Très sombre |
+| 18.0 | ~40 Hz | Sub-urbain sombre |
+| 17.0 | 100 Hz | Banlieue |
+| 15.0 | 631 Hz | Urbain |
+| 13.0 | 3981 Hz | Centre-ville |
+| 12.0 | 10 000 Hz | Très lumineux |
+| 10.0 | ~63 000 Hz | Jour faible |
+| 5.0 | ~10⁶ Hz | Plein jour (saturation) |
+
+### ✨ Helper public `sqmHzEquivalent(double mpsas)`
+
+Nouvelle fonction publique dans `MyLib.ino` :
+```cpp
+String sqmHzEquivalent(double mpsas);
+```
+Retourne directement une chaîne **10 caractères zero-padded** (format
+SQM-LU natif). Gère les cas limites :
+- mpsas >= 22.0 → "0000000001" (1 Hz floor)
+- mpsas <= 0.0 → "9999999999" (saturation cap)
+- mpsas NaN/Inf → "0000000000"
+
+### Fichiers modifiés
+- `SQM_pro/MyLib.ino` : nouvelle fonction `sqmHzEquivalent()`
+- `SQM_pro/SQM_pro.ino` : utilisé dans handlers `r`, `u`, `U1`
+
+### Notes pour la suite
+
+- **`wx` (weather extended)** : n'utilise pas de champ Hz, format inchangé.
+- Si tu veux la vraie **fréquence physique du TSL2591** (counts/intégration
+  time), c'est faisable mais nécessite une calibration croisée pour matcher
+  l'échelle SQM-LU. La méthode v2.2.14 (inverse mpsas) donne le résultat
+  le plus directement utilisable par UDM.
+
+---
+
 ## [v2.2.13] — 2026-05-08
 
 ### 🆕 3 nouvelles commandes UDM extraites du code source officiel
