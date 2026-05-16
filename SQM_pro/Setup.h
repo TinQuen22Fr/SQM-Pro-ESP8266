@@ -76,4 +76,29 @@
 //#define OLED_FONT u8x8_font_8x13_1x2_f
 #define OLED_FONT u8x8_font_amstrad_cpc_extended_f
 
+// -----------------------------------------------------------------------------
+// Cross-file extern declarations
+// -----------------------------------------------------------------------------
+// arduino-cli concatenates *.ino files but emits function prototypes only,
+// NOT variable extern declarations. Variables defined in GPS.ino must be
+// declared extern here so SQM_pro.ino can see them (used in the `g0x`
+// handler since v2.2.13). Without this, arduino-cli refuses to compile
+// even though the Arduino IDE GUI sometimes accepts it (different
+// preprocessor logic between the two tools).
+//
+#ifdef GPS_ON
+extern bool   GPS_sync;
+extern bool   GPS_wiring_OK;
+extern byte   g_sat;
+extern float  g_alt;
+extern int    g_year;
+extern byte   g_month;
+extern byte   g_day;
+extern byte   g_hour;
+extern byte   g_minute;
+extern byte   g_second;
+extern double g_lat;
+extern double g_lng;
+#endif
+
 #endif // SETUP_H
