@@ -23,7 +23,7 @@ name: Build Firmware (ESP8266)
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, wifimanager ]
     paths:
       - '**.ino'
       - '**.h'
@@ -69,7 +69,41 @@ jobs:
             "Adafruit Unified Sensor" \
             "BMx280MI" \
             "U8g2" \
-            "TinyGPSPlus"
+            "TinyGPSPlus" \
+            "WiFiManager" \
+            "ESP_DoubleResetDetector"
+
+      # ----------------------------------------------------------------------
+      # v2.3.0 : génération de secrets.h depuis les GitHub Secrets.
+      # SENSOR_KEY est partagée par tous les utilisateurs du projet coop
+      # (passe-partout vers le serveur central sqm.quentin-astro.fr).
+      # Les WiFi credentials ne sont PLUS dans secrets.h (saisis via le
+      # portail captif au 1er boot, cf. WiFiPortal.ino).
+      # ----------------------------------------------------------------------
+      - name: Generate secrets.h from GitHub Secrets
+        env:
+          SENSOR_KEY:   ${{ secrets.SENSOR_KEY }}
+          OTA_HOSTNAME: ${{ secrets.OTA_HOSTNAME }}
+          OTA_PASSWORD: ${{ secrets.OTA_PASSWORD }}
+        run: |
+          # Valeurs par défaut si secrets manquants (build dev fonctionnel
+          # mais avec une clé invalide → push backend renverra 401).
+          : "${SENSOR_KEY:=PLACEHOLDER-set-SENSOR_KEY-in-repo-secrets}"
+          : "${OTA_HOSTNAME:=sqm-pro-ci}"
+          : "${OTA_PASSWORD:=ci-build-no-ota-please}"
+
+          cat > SQM_pro/secrets.h <<EOF
+          // Auto-généré par .github/workflows/build-firmware.yml
+          // NE PAS éditer, NE PAS commit (gitignored).
+          #ifndef SECRETS_H
+          #define SECRETS_H
+          #define SENSOR_KEY    "${SENSOR_KEY}"
+          #define OTA_HOSTNAME  "${OTA_HOSTNAME}"
+          #define OTA_PASSWORD  "${OTA_PASSWORD}"
+          #endif
+          EOF
+
+          echo "secrets.h généré (SENSOR_KEY: ${SENSOR_KEY:0:4}...${SENSOR_KEY: -4})"
 
       - name: Show available boards & libs (debug)
         run: |
@@ -114,6 +148,39 @@ jobs:
           name: sqm-pro-esp8266-firmware
           path: ${{ steps.bin.outputs.bin }}
           retention-days: 90
+
+      # ----------------------------------------------------------------------
+      # Release "latest-wifimanager" : MAJ à chaque push sur la branche
+      # wifimanager. Sert à tester le firmware v2.3.0 (WiFiManager + portail
+      # captif) AVANT de merger dans main. Pour flasher cette version depuis
+      # l'app web :
+      #   - soit modifier temporairement le manifest backend pour pointer
+      #     vers le tag "latest-wifimanager"
+      #   - soit télécharger le .bin et le flasher via Arduino IDE ou
+      #     esptool.py
+      # ----------------------------------------------------------------------
+      - name: Update / create "latest-wifimanager" prerelease
+        if: github.event_name == 'push' && github.ref == 'refs/heads/wifimanager'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest-wifimanager
+          name: "Beta - WiFiManager portail captif"
+          body: |
+            **Pre-release de la branche `wifimanager`** (v2.3.0).
+
+            Changements majeurs :
+            - Plus de credentials WiFi en dur dans le firmware
+            - Portail captif `SQM-Setup-XXXXXX` au premier boot
+            - Champ "Nom de la station" personnalisable
+            - Double Reset Detection pour forcer la reconfiguration sans
+              accès au boîtier (couper/rallumer 2x en moins de 5 s)
+
+            **À tester avant merge dans `main`.**
+          files: build/sqm-pro-esp8266.bin
+          prerelease: true
+          make_latest: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # ----------------------------------------------------------------------
       # Release "latest" : MAJ à chaque push sur main (en mode prerelease).

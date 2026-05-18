@@ -14,6 +14,15 @@
 #define EEPROM_CONTRAS_INDEX_C     17
 #define EEPROM_CONTRAS_INDEX_B     20
 
+// v2.3.0 - Nom de station personnalisé (saisi via portail captif)
+// Slot de 33 octets (1 marker 'N' + 32 chars + null implicite)
+#define EEPROM_STATION_NAME_INDEX_C 30
+#define EEPROM_STATION_NAME_INDEX_S 31
+#define EEPROM_STATION_NAME_MAX     32
+
+// Note : EEPROM_SIZE est défini dans Config.h pour être visible dans tous
+// les .ino, indépendamment de l'ordre de concaténation arduino-cli.
+
 // -----------------------------------------------------------------------------
 // SQM calibration offset
 // -----------------------------------------------------------------------------
@@ -129,4 +138,44 @@ float EEPROM_readFloat(byte i) {
   float f;
   EEPROM_readQuad(i, (byte*)&f);
   return f;
+}
+
+// -----------------------------------------------------------------------------
+// v2.3.0 - Nom de station personnalisé (portail captif)
+// -----------------------------------------------------------------------------
+// Lit le nom de station depuis l'EEPROM. Si absent (premier boot ou EEPROM
+// vierge), `out[0]` est mis à 0 et l'appelant peut générer un nom par défaut.
+void ReadEEStationName(char *out, size_t outSize) {
+  if (outSize == 0) return;
+  out[0] = 0;
+  if (EEPROM.read(EEPROM_STATION_NAME_INDEX_C) != 'N') {
+    return;  // pas de nom persisté
+  }
+  size_t maxRead = outSize - 1;
+  if (maxRead > EEPROM_STATION_NAME_MAX) maxRead = EEPROM_STATION_NAME_MAX;
+  size_t i = 0;
+  for (; i < maxRead; i++) {
+    char c = (char)EEPROM.read(EEPROM_STATION_NAME_INDEX_S + i);
+    if (c == 0 || (uint8_t)c == 0xFF) break;
+    // Sanity : on n'autorise que les chars imprimables ASCII pour éviter
+    // d'envoyer un ID corrompu au backend.
+    if (c < 0x20 || c > 0x7E) { i = 0; break; }
+    out[i] = c;
+  }
+  out[i] = 0;
+}
+
+// Écrit le nom de station dans l'EEPROM. Appel suivi obligatoirement par
+// EEPROM.commit() côté appelant (déjà fait dans wifiPortal_setup()).
+void WriteEEStationName(const char *name) {
+  if (!name) return;
+  EEPROM.write(EEPROM_STATION_NAME_INDEX_C, 'N');
+  size_t i = 0;
+  for (; i < EEPROM_STATION_NAME_MAX && name[i] != 0; i++) {
+    EEPROM.write(EEPROM_STATION_NAME_INDEX_S + i, (uint8_t)name[i]);
+  }
+  // null terminator
+  if (i < EEPROM_STATION_NAME_MAX) {
+    EEPROM.write(EEPROM_STATION_NAME_INDEX_S + i, 0);
+  }
 }

@@ -1,59 +1,67 @@
 // WiFi.ino
 // WiFi + cloud upload to SQM Nightwatch (magnitude-tracker).
 //
-// Copyright (c) 2025 Quentin Dumont
+// Copyright (c) 2025-2026 Quentin Dumont
 //
-// The backend endpoint is HTTPS-only (port 80 redirects 301 -> 443),
-// so we use WiFiClientSecure. The ingestion route accepts an HTTP GET
-// with query-string parameters; the key names (ID, KEY, T, H, P, S, D,
-// V, L, Alt, Lat, Lon) match what this firmware has always emitted, so
-// only the transport changed (HTTP -> HTTPS).
+// Depuis la v2.3.0 :
+//   - Les credentials WiFi ne sont PLUS dans secrets.h. Ils sont saisis par
+//     l'utilisateur via le portail captif `SQM-Setup-XXXXXX` au premier boot
+//     (cf. WiFiPortal.ino). Ils sont persistés en flash par ESP8266WiFi et
+//     restaurés automatiquement via WiFi.begin() sans arguments.
+//   - L'identifiant de la sonde (`ID=...` envoyé au backend) provient
+//     également du portail captif et est stocké en EEPROM (`gStationName`).
+//     Cela permet un projet coopératif où chaque utilisateur identifie sa
+//     propre station sans recompiler le firmware.
+//
+// La SENSOR_KEY (clé API du backend) reste hardcodée car partagée par tous
+// les utilisateurs du projet coopératif (= "passe-partout vers le serveur de
+// Quentin"). Cette valeur est injectée dans secrets.h au moment de la
+// compilation CI depuis le GitHub Secret `SENSOR_KEY`.
 //
 #ifdef WIFI_ON
 
 #include <ESP8266WiFi.h>
 #include <WiFiClientSecure.h>
 
+// Variables exposées par WiFiPortal.ino
+extern char gStationName[33];
+extern bool gWifiPortalOk;
+
 void wifi_setup() {
-  if (!WiFiConnected) {
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(ssid, password);
+  // Avant la v2.3.0, cette fonction faisait WiFi.begin(ssid, password).
+  // Désormais c'est wifiPortal_setup() (appelé une seule fois au démarrage)
+  // qui établit la connexion via WiFiManager. Cette fonction-ci se contente
+  // de surveiller l'état du WiFi et de tenter une reconnexion si on a perdu
+  // la connexion (sans pour autant relancer le portail captif).
+  if (WiFi.status() == WL_CONNECTED) {
+    WiFiConnected = true;
+    return;
+  }
+
 #ifdef DEBUG_WIFI_ON
-    Serial.printf("Wait for WiFi.");
+  Serial.print(F("[WiFi] disconnected, attempting reconnect..."));
 #endif
-    for (uint8_t t = 30; t > 0; t--) {
-      if (WiFi.status() == WL_CONNECTED) break;
-      delay(500);
+
+  // ESP8266WiFi stocke les derniers credentials en flash → un simple
+  // WiFi.begin() sans args suffit pour retenter la même connexion.
+  WiFi.begin();
+  for (uint8_t t = 30; t > 0; t--) {
+    if (WiFi.status() == WL_CONNECTED) break;
+    delay(500);
 #ifdef DEBUG_WIFI_ON
-      Serial.print(".");
-#endif
-    }
-#ifdef ALT_SSID_ON
-#ifdef DEBUG_WIFI_ON
-    Serial.printf("\nALT_SSID");
-#endif
-    if (WiFi.status() != WL_CONNECTED) {
-      WiFi.begin(ssid2, password2);
-      for (uint8_t t = 30; t > 0; t--) {
-        if (WiFi.status() == WL_CONNECTED) break;
-        delay(500);
-#ifdef DEBUG_WIFI_ON
-        Serial.print(":");
-#endif
-      }
-    }
+    Serial.print(".");
 #endif
   }
+
   if (WiFi.status() != WL_CONNECTED) {
 #ifdef DEBUG_WIFI_ON
-    Serial.printf("\nWIFI not connect.");
+    Serial.println(F("\n[WiFi] reconnect failed"));
 #endif
     WiFiConnected = false;
   } else {
     WiFiConnected = true;
 #ifdef DEBUG_WIFI_ON
-    Serial.println("\nWiFi connected");
-    Serial.print("IP address: ");
+    Serial.print(F("\n[WiFi] reconnected, IP: "));
     Serial.println(WiFi.localIP());
 #endif
   }
@@ -99,9 +107,10 @@ void wifi_main(double mpsas, double dmpsas, int temp, byte hum, int pres) {
   Serial.print("Pressure: ");Serial.print(pres/100); Serial.println(" hPa");
   Serial.print("Lux: ");     Serial.println(lux, 4);
   Serial.print("Battery: "); Serial.print(battery, 3); Serial.print(" V ("); Serial.print(battPct); Serial.println(" %)");
+  Serial.print("Station ID: "); Serial.println(gStationName);
 #endif
 
-  url  = "?ID=";  url += SensorID;
+  url  = "?ID=";  url += gStationName;  // <-- nom dynamique depuis EEPROM
   url += "&KEY="; url += sensor_key;
   url += "&T=";   url += temp;
   url += "&H=";   url += hum;

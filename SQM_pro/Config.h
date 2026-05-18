@@ -24,21 +24,18 @@
 #endif
 
 // Fallback default values - DO NOT put real secrets here, edit secrets.h
-#ifndef WIFI_SSID
-  #define WIFI_SSID         "YourPrimarySSID"
-#endif
-#ifndef WIFI_PASSWORD
-  #define WIFI_PASSWORD     "YourPrimaryPassword"
-#endif
-#ifndef WIFI_SSID_ALT
-  #define WIFI_SSID_ALT     "YourBackupSSID"
-#endif
-#ifndef WIFI_PASSWORD_ALT
-  #define WIFI_PASSWORD_ALT "YourBackupPassword"
-#endif
-#ifndef SENSOR_ID
-  #define SENSOR_ID         "SQM-001"
-#endif
+// Depuis la v2.3.0 :
+//   - WIFI_SSID / WIFI_PASSWORD ne sont plus nécessaires : les credentials
+//     WiFi sont saisis par l'utilisateur via le portail captif au premier
+//     boot (cf. WiFiPortal.ino) et persistés en flash.
+//   - SENSOR_ID n'est plus utilisé : l'identifiant de la station est saisi
+//     par l'utilisateur via le portail captif (champ "Nom de la station")
+//     et stocké en EEPROM. Un nom par défaut `SQM-XXXXXX` est généré à
+//     partir du chip ID si l'utilisateur n'en saisit pas.
+//   - Seuls SENSOR_KEY, OTA_HOSTNAME et OTA_PASSWORD restent dans secrets.h.
+//     SENSOR_KEY est injectée par la CI GitHub Actions depuis le secret du
+//     repo, ce qui fait du .bin un binaire "pré-câblé" pour le serveur
+//     central du projet coopératif.
 #ifndef SENSOR_KEY
   #define SENSOR_KEY        "paste-your-real-api-key-here"
 #endif
@@ -48,6 +45,15 @@
 #ifndef OTA_PASSWORD
   #define OTA_PASSWORD      "change-me-please"
 #endif
+
+// -----------------------------------------------------------------------------
+// EEPROM
+// -----------------------------------------------------------------------------
+// Taille totale du buffer EEPROM virtuel de l'ESP8266 (en flash).
+// 96 octets : 30 octets de slots historiques (cal SQM, cal temp, contraste,
+// flags) + 33 octets pour le nom de station personnalisé (v2.3.0) + marge.
+// Si vous ajoutez de nouveaux champs, augmentez cette valeur en consequence.
+#define EEPROM_SIZE 96
 
 // -----------------------------------------------------------------------------
 // Debug flags
@@ -86,21 +92,23 @@ const char* host = "sqm.quentin-astro.fr";
 String app = "/api/sqm_push";
 #define HTTP_PORT 443
 
-// WiFi credentials (primary) - actual values come from secrets.h
-const char* ssid     = WIFI_SSID;
-const char* password = WIFI_PASSWORD;
-
-// Alternative WiFi credentials (if primary fails)
-#define ALT_SSID_ON
-const char* ssid2     = WIFI_SSID_ALT;
-const char* password2 = WIFI_PASSWORD_ALT;
+// WiFi credentials : SAISIS PAR L'UTILISATEUR via le portail captif
+// (WiFiPortal.ino) au premier boot et persistés en flash par ESP8266WiFi.
+// Pour forcer une reconfiguration : DOUBLE RESET physique (couper/rallumer
+// le courant 2 fois dans les 5 secondes) → le firmware relance le portail.
 
 // -----------------------------------------------------------------------------
 // Sensor identity
 // -----------------------------------------------------------------------------
-// Values come from secrets.h. Use a different SENSOR_ID per physical device
-// (SQM-001, SQM-002, ...). Same API key may be shared by all devices.
-const char* SensorID   = SENSOR_ID;
+// L'identifiant unique de la sonde (envoyé comme paramètre ID au backend) est
+// saisi par l'utilisateur dans le portail captif (champ "Nom de la station")
+// et stocké en EEPROM. La variable globale `gStationName` (cf. WiFiPortal.ino)
+// est lue dynamiquement par wifi_main() à chaque push.
+//
+// La clé API reste hardcodée car elle est commune à TOUS les utilisateurs
+// du projet coopératif : c'est le "passe-partout" vers le serveur central
+// (sqm.quentin-astro.fr). Elle est injectée dans secrets.h par la CI GitHub
+// depuis le secret de dépôt `SENSOR_KEY`.
 const char* sensor_key = SENSOR_KEY;
 
 // -----------------------------------------------------------------------------

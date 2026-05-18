@@ -27,7 +27,7 @@
 
     Wiring diagram / PCB: https://easyeda.com/hujer.roman/sqm-hr
 */
-#define Version       "2.2.4"
+#define Version       "2.3.0"
 #define SERIAL_NUMBER "20200604"
 
 #include "Config.h"
@@ -105,6 +105,11 @@ void setup() {
   Serial.println("Ready");
 #endif
 
+  // v2.3.0 : EEPROM agrandie pour le nom de station personnalisé.
+  // EEPROM.begin() initialise le buffer interne ; les commit() effectifs
+  // sont faits ponctuellement (cf. WiFiPortal.ino après config utilisateur).
+  EEPROM.begin(EEPROM_SIZE);
+
 #ifdef GPS_ON
   gpsSerial.begin(GPSBaud);
 #endif
@@ -179,6 +184,12 @@ void setup() {
   delay(1500);
 
 #ifdef WIFI_ON
+  // v2.3.0 : portail captif WiFiManager + Double Reset Detection.
+  // Au 1er boot ou après un double power-cycle, ouvre un AP `SQM-Setup-XXXXXX`
+  // pour saisir SSID/password WiFi + nom de la station. Bloquant pendant
+  // toute la durée du portail (timeout 5 min).
+  wifiPortal_setup();
+  // wifi_setup() reste appelé pour le côté "watchdog reconnexion".
   wifi_setup();
 #endif
 #ifdef OTA_ON
@@ -193,6 +204,13 @@ void setup() {
 // =============================================================================
 void loop() {
   String response;
+
+#ifdef WIFI_ON
+  // v2.3.0 : maintient à jour le Double Reset Detector. Sans cet appel,
+  // le flag DRD ne sera jamais effacé en RTC memory → un simple reboot
+  // serait interprété comme un double reset au prochain boot.
+  wifiPortal_loop();
+#endif
 
 #ifdef DEEP_SLEEP_ON
   // ---------------------------------------------------------------------------
