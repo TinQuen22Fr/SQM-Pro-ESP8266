@@ -46,6 +46,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Extraction dynamique de la version du firmware depuis le code source.
+      # → évite les versions hardcodées dans les release notes (source de drift).
+      - name: Extract firmware version
+        id: fwversion
+        run: |
+          VERSION=$(grep -oP '#define\s+Version\s+"\K[^"]+' SQM_pro/SQM_pro.ino | head -1)
+          if [ -z "$VERSION" ]; then
+            echo "!! Impossible d'extraire la version depuis SQM_pro.ino"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "→ Version firmware détectée : v$VERSION"
+
       - name: Setup arduino-cli
         uses: arduino/setup-arduino-cli@v2
 
@@ -164,16 +177,19 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest-wifimanager
-          name: "Beta - WiFiManager portail captif"
+          name: "Beta v${{ steps.fwversion.outputs.version }} — WiFiManager portail captif"
           body: |
-            **Pre-release de la branche `wifimanager`** (v2.3.0).
+            **Pre-release de la branche `wifimanager`** (v${{ steps.fwversion.outputs.version }}).
 
             Changements majeurs :
             - Plus de credentials WiFi en dur dans le firmware
             - Portail captif `SQM-Setup-XXXXXX` au premier boot
             - Champ "Nom de la station" personnalisable
+            - WiFi de secours configurable (v2.3.1+)
             - Double Reset Detection pour forcer la reconfiguration sans
               accès au boîtier (couper/rallumer 2x en moins de 5 s)
+
+            Compilé depuis le commit `${{ github.sha }}`.
 
             **À tester avant merge dans `main`.**
           files: build/sqm-pro-esp8266.bin
