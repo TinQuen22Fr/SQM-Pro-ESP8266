@@ -20,6 +20,16 @@
 #define EEPROM_STATION_NAME_INDEX_S 31
 #define EEPROM_STATION_NAME_MAX     32
 
+// v2.3.1 - WiFi de secours (saisi via portail captif, facultatif)
+// Slot SSID  : marker 'W' + 32 chars (offset 63..95)
+// Slot PASS  : 64 chars                (offset 96..159)
+// → seul un SSID non vide active la tentative de fallback.
+#define EEPROM_ALT_WIFI_INDEX_C 63
+#define EEPROM_ALT_SSID_INDEX_S 64
+#define EEPROM_ALT_SSID_MAX     32
+#define EEPROM_ALT_PASS_INDEX_S 96
+#define EEPROM_ALT_PASS_MAX     64
+
 // Note : EEPROM_SIZE est défini dans Config.h pour être visible dans tous
 // les .ino, indépendamment de l'ordre de concaténation arduino-cli.
 
@@ -177,5 +187,75 @@ void WriteEEStationName(const char *name) {
   // null terminator
   if (i < EEPROM_STATION_NAME_MAX) {
     EEPROM.write(EEPROM_STATION_NAME_INDEX_S + i, 0);
+  }
+}
+
+// -----------------------------------------------------------------------------
+// v2.3.1 - WiFi de secours (portail captif, facultatif)
+// -----------------------------------------------------------------------------
+// Lit les credentials du WiFi de secours stockés en EEPROM. Si absents,
+// remet outSsid[0]=0 et outPass[0]=0.
+void ReadEEAltWiFi(char *outSsid, size_t ssidSize,
+                   char *outPass, size_t passSize) {
+  if (outSsid && ssidSize > 0) outSsid[0] = 0;
+  if (outPass && passSize > 0) outPass[0] = 0;
+  if (EEPROM.read(EEPROM_ALT_WIFI_INDEX_C) != 'W') {
+    return;  // pas de WiFi backup persisté
+  }
+  // SSID
+  if (outSsid && ssidSize > 0) {
+    size_t maxRead = ssidSize - 1;
+    if (maxRead > EEPROM_ALT_SSID_MAX) maxRead = EEPROM_ALT_SSID_MAX;
+    size_t i = 0;
+    for (; i < maxRead; i++) {
+      char c = (char)EEPROM.read(EEPROM_ALT_SSID_INDEX_S + i);
+      if (c == 0 || (uint8_t)c == 0xFF) break;
+      outSsid[i] = c;
+    }
+    outSsid[i] = 0;
+  }
+  // Password (les WiFi WPA2 acceptent quasi tous les ASCII printable, on ne
+  // filtre donc pas comme pour le station name)
+  if (outPass && passSize > 0) {
+    size_t maxRead = passSize - 1;
+    if (maxRead > EEPROM_ALT_PASS_MAX) maxRead = EEPROM_ALT_PASS_MAX;
+    size_t i = 0;
+    for (; i < maxRead; i++) {
+      char c = (char)EEPROM.read(EEPROM_ALT_PASS_INDEX_S + i);
+      if (c == 0 || (uint8_t)c == 0xFF) break;
+      outPass[i] = c;
+    }
+    outPass[i] = 0;
+  }
+}
+
+// Écrit les credentials du WiFi de secours en EEPROM. Si ssid==NULL ou vide,
+// désactive le backup (efface le marker).
+void WriteEEAltWiFi(const char *ssid, const char *pass) {
+  if (!ssid || ssid[0] == 0) {
+    // Désactiver : on écrit un marker invalide
+    EEPROM.write(EEPROM_ALT_WIFI_INDEX_C, 0xFF);
+    return;
+  }
+  EEPROM.write(EEPROM_ALT_WIFI_INDEX_C, 'W');
+  // SSID
+  size_t i = 0;
+  for (; i < EEPROM_ALT_SSID_MAX && ssid[i] != 0; i++) {
+    EEPROM.write(EEPROM_ALT_SSID_INDEX_S + i, (uint8_t)ssid[i]);
+  }
+  if (i < EEPROM_ALT_SSID_MAX) {
+    EEPROM.write(EEPROM_ALT_SSID_INDEX_S + i, 0);
+  }
+  // Password (peut être vide pour un WiFi ouvert)
+  if (pass) {
+    i = 0;
+    for (; i < EEPROM_ALT_PASS_MAX && pass[i] != 0; i++) {
+      EEPROM.write(EEPROM_ALT_PASS_INDEX_S + i, (uint8_t)pass[i]);
+    }
+    if (i < EEPROM_ALT_PASS_MAX) {
+      EEPROM.write(EEPROM_ALT_PASS_INDEX_S + i, 0);
+    }
+  } else {
+    EEPROM.write(EEPROM_ALT_PASS_INDEX_S, 0);
   }
 }

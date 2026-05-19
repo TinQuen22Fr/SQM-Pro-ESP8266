@@ -3,27 +3,31 @@
 //
 // Copyright (c) 2026 Quentin Dumont
 //
-// Au premier boot (ou si l'EEPROM ne contient pas encore de credentials WiFi),
-// le firmware ouvre un point d'accès `SQM-Setup-XXXXXX` (où XXXXXX = 6 derniers
-// hex du chip ID ESP8266). L'utilisateur s'y connecte depuis son téléphone,
-// un portail captif s'ouvre automatiquement, et il saisit :
+// v2.3.0 :
+//   Au premier boot (ou si l'EEPROM ne contient pas encore de credentials WiFi),
+//   le firmware ouvre un point d'accès `SQM-Setup-XXXXXX` (où XXXXXX = 6 derniers
+//   hex du chip ID ESP8266). L'utilisateur s'y connecte depuis son téléphone,
+//   un portail captif s'ouvre automatiquement, et il saisit :
+//     - le SSID de son WiFi domestique
+//     - le mot de passe associé
+//     - un nom personnalisé pour sa station
 //
-//   - le SSID de son WiFi domestique
-//   - le mot de passe associé
-//   - un nom personnalisé pour sa station (ex: "SQM-Maison", "SQM-PicDuMidi")
-//     → ce nom est envoyé au backend comme paramètre `ID=` et permet
-//       d'identifier les mesures sur le dashboard multi-stations.
+// v2.3.1 :
+//   Ajout d'un WiFi de secours (facultatif) saisi via deux champs supplémentaires
+//   du portail captif. La logique de boot devient :
+//     1. Tentative connexion WiFi primaire (credentials persistés en flash)
+//     2. Si échec : tentative WiFi secondaire (depuis EEPROM, si configuré)
+//     3. Si échec : portail captif `SQM-Setup-XXXXXX`
+//   Le WiFi secondaire est utile par exemple pour une sonde déplaçable
+//   (résidence principale ⇄ résidence secondaire) ou en cas de coupure box
+//   (smartphone partagé en hotspot temporaire).
 //
-// Pour FORCER une reconfiguration sans accès physique au boîtier (boîtier
-// scellé / installé en extérieur), l'utilisateur peut faire un DOUBLE RESET :
+// Double Reset (DRD) : pour FORCER une reconfiguration sans accès physique au
+// boîtier (boîtier scellé / installé en extérieur) :
 //   1. Couper le courant de la sonde
 //   2. Rallumer  (le firmware démarre, attend 5 s)
 //   3. Re-couper le courant DANS LES 5 SECONDES qui suivent
 //   4. Rallumer → le firmware détecte le double reset et relance le portail
-//
-// Cette technique (Double Reset Detection / DRD) utilise la RTC memory de
-// l'ESP8266 qui survit à un soft reset mais pas à une coupure d'alimentation
-// > ~5 s, ce qui est exactement le comportement attendu.
 //
 // Bibliothèques utilisées (à ajouter dans la CI) :
 //   - WiFiManager           (tzapu, v2.0.16+)
@@ -33,154 +37,215 @@
 
 #include <ESP8266WiFi.h>
 
-// WiFiManager + DRD
-// Note: les deux libs sont header-only / .h+.cpp dans le dossier lib, donc
-// arduino-cli les concatène automatiquement. Pas besoin de variables globales
-// statiques séparées.
 #define ESP_DRD_USE_LITTLEFS    false
 #define ESP_DRD_USE_SPIFFS      false
-#define ESP_DRD_USE_EEPROM      false  // on utilise la RTC memory, plus rapide
+#define ESP_DRD_USE_EEPROM      false
 #define ESP8266_DRD_USE_RTC     true
 #define DOUBLERESETDETECTOR_DEBUG false
 #include <ESP_DoubleResetDetector.h>
 
-#define WM_NODEBUG  // commente pour activer les logs WiFiManager sur Serial
+#define WM_NODEBUG
 #include <WiFiManager.h>
 
 // -----------------------------------------------------------------------------
-// Paramètres de configuration du portail
+// Paramètres
 // -----------------------------------------------------------------------------
-// Délai max pour faire le 2e reset (en secondes). 5 s laisse le temps de
-// rebrancher le câble d'alim sans être trop laxiste.
 #define DRD_TIMEOUT 5
-// Adresse en RTC memory (0..511 pour ESP8266). 0 est le standard.
 #define DRD_ADDRESS 0
-
-// Timeout du portail captif quand il est ouvert automatiquement (sec).
-// Si l'utilisateur ne configure rien dans ce délai, on tente quand même un
-// boot normal (l'ESP retentera la dernière connexion connue). Évite que la
-// sonde reste bloquée en mode AP si l'utilisateur s'est juste éloigné.
-#define WIFI_PORTAL_TIMEOUT 300  // 5 min
+#define WIFI_PORTAL_TIMEOUT     300   // 5 min max sur le portail
+#define WIFI_CONNECT_TIMEOUT_MS 15000 // 15 s max par tentative (primaire ou alt)
 
 // -----------------------------------------------------------------------------
-// État global (initialisé dans wifiPortal_setup, utilisé par WiFi.ino)
+// État global
 // -----------------------------------------------------------------------------
 DoubleResetDetector* drd = nullptr;
-
-// Nom de la station envoyé au backend comme paramètre ID. Initialisé soit
-// depuis l'EEPROM (si l'utilisateur l'a personnalisé via le portail), soit
-// auto-généré au format `SQM-XXXXXX`. Cette variable remplace l'ancienne
-// `SensorID` (qui venait de secrets.h en dur).
 char gStationName[33] = "";
-
-// Indique si la connexion WiFi initiale a réussi (true) ou échoué (false).
-// WiFi.ino lit cette valeur pour activer/inhiber les push HTTPS.
 bool gWifiPortalOk = false;
 
 // -----------------------------------------------------------------------------
-// Helper : auto-génère un nom par défaut SQM-XXXXXX d'après le chip ID
+// Helpers internes
 // -----------------------------------------------------------------------------
 static void buildDefaultStationName(char* out, size_t outSize) {
   snprintf(out, outSize, "SQM-%06X", ESP.getChipId() & 0xFFFFFF);
 }
 
-// -----------------------------------------------------------------------------
-// wifiPortal_setup()
-// À appeler UNE FOIS au démarrage, AVANT toute autre opération WiFi.
-//   - Détecte le double reset (force le portail si oui)
-//   - Sinon : tente l'auto-connexion avec les credentials EEPROM. En cas
-//     d'échec ou de premier boot, ouvre le portail captif.
-//   - Au retour, soit le WiFi est connecté (gWifiPortalOk = true), soit on
-//     part en mode dégradé (la sonde continuera de mesurer en local sans
-//     pousser, jusqu'au prochain reboot ou double reset).
-// -----------------------------------------------------------------------------
-void wifiPortal_setup() {
-  // 1. Charger le nom de station depuis EEPROM (ou auto-générer si absent)
-  ReadEEStationName(gStationName, sizeof(gStationName));
-  if (gStationName[0] == 0) {
-    buildDefaultStationName(gStationName, sizeof(gStationName));
+// Bloque jusqu'à ce que WiFi.status() == WL_CONNECTED, ou que `timeoutMs`
+// soit écoulé. Retourne true si connecté.
+static bool waitForWifi(uint32_t timeoutMs) {
+  uint32_t start = millis();
+  while (millis() - start < timeoutMs) {
+    if (WiFi.status() == WL_CONNECTED) return true;
+    delay(250);
   }
+  return WiFi.status() == WL_CONNECTED;
+}
 
-  // 2. Init du Double Reset Detector
-  drd = new DoubleResetDetector(DRD_TIMEOUT, DRD_ADDRESS);
+// Tente une connexion au WiFi de secours sans toucher aux credentials persistés
+// en flash (WiFi.persistent(false)). Ainsi le primaire reste celui sauvé par
+// WiFiManager même si on tombe en mode "alt" pour cette session.
+static bool tryAltWifi(const char* altSsid, const char* altPass) {
+  if (!altSsid || altSsid[0] == 0) return false;
+  Serial.print(F("[WiFi] Trying backup SSID: "));
+  Serial.println(altSsid);
+  WiFi.persistent(false);
+  WiFi.disconnect(false);
+  delay(100);
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(altSsid, altPass ? altPass : "");
+  bool ok = waitForWifi(WIFI_CONNECT_TIMEOUT_MS);
+  WiFi.persistent(true);  // restaure le comportement par défaut
+  return ok;
+}
 
-  // 3. Construire le SSID du point d'accès (unique par chip ID)
+// Tente une reconnexion au WiFi primaire (credentials persistés en flash).
+static bool tryPrimaryWifi() {
+  Serial.println(F("[WiFi] Trying primary saved credentials..."));
+  WiFi.mode(WIFI_STA);
+  WiFi.begin();  // utilise les derniers SSID/password sauvés en flash
+  return waitForWifi(WIFI_CONNECT_TIMEOUT_MS);
+}
+
+// Ouvre le portail captif WiFiManager avec les 3 champs custom et persiste
+// en EEPROM ce que l'utilisateur a saisi. Bloquant.
+static bool runConfigPortal(char* stationName, size_t stationNameSize,
+                            char* altSsid, size_t altSsidSize,
+                            char* altPass, size_t altPassSize) {
   char apName[32];
   snprintf(apName, sizeof(apName), "SQM-Setup-%06X",
            ESP.getChipId() & 0xFFFFFF);
 
-  // 4. Préparer le WiFiManager + champ personnalisé "nom de station"
   WiFiManager wm;
-
 #ifdef WM_NODEBUG
   wm.setDebugOutput(false);
 #endif
 
   WiFiManagerParameter customStationName(
     "station_name",
-    "Nom de la station (ex: SQM-Maison, SQM-PicDuMidi)",
-    gStationName,
-    32
+    "Nom de la station (ex: SQM-Maison)",
+    stationName, 32
   );
+  WiFiManagerParameter customAltSsid(
+    "alt_ssid",
+    "WiFi de secours - SSID (facultatif)",
+    altSsid, 32
+  );
+  // Le mot de passe n'est jamais pré-rempli (sécurité : on ne l'expose pas)
+  WiFiManagerParameter customAltPass(
+    "alt_pass",
+    "WiFi de secours - mot de passe",
+    "", 64,
+    " type=\"password\""
+  );
+
   wm.addParameter(&customStationName);
+  wm.addParameter(&customAltSsid);
+  wm.addParameter(&customAltPass);
 
-  // Configuration esthétique du portail
   wm.setTitle("SQM Pro - Configuration");
-  wm.setClass("invert");          // thème sombre (cohérent avec l'app web)
+  wm.setClass("invert");
   wm.setConfigPortalTimeout(WIFI_PORTAL_TIMEOUT);
-  wm.setBreakAfterConfig(true);   // sort dès que l'utilisateur a sauvé
+  wm.setBreakAfterConfig(true);
 
-  bool configured = false;
+  // On utilise startConfigPortal qui ouvre toujours le portail (vs autoConnect
+  // qui tente d'abord une connexion). Ici on a déjà fait nos propres tentatives
+  // primaire + secours en amont, donc on veut juste l'UI.
+  bool configured = wm.startConfigPortal(apName);
 
-  // 5. Branche A : double reset détecté → portail forcé même si WiFi en EEPROM
-  if (drd->detectDoubleReset()) {
-    Serial.println(F("\n[WiFi] Double reset detected -> opening config portal"));
-    configured = wm.startConfigPortal(apName);
-  }
-  // 6. Branche B : tentative d'auto-connexion (utilise les credentials
-  //    sauvés en flash par WiFi.begin lors d'une session précédente).
-  //    Si échec → portail captif ouvert automatiquement par WiFiManager.
-  else {
-    Serial.println(F("\n[WiFi] autoConnect..."));
-    configured = wm.autoConnect(apName);
-  }
-
-  // 7. Si l'utilisateur a sauvé un nouveau nom, le persister en EEPROM
+  // Persistance du nom de station
   if (configured) {
     const char* newName = customStationName.getValue();
-    if (newName && newName[0] != 0
-        && strncmp(newName, gStationName, sizeof(gStationName)) != 0) {
-      strncpy(gStationName, newName, sizeof(gStationName) - 1);
-      gStationName[sizeof(gStationName) - 1] = 0;
-      WriteEEStationName(gStationName);
-      EEPROM.commit();
-      Serial.print(F("[WiFi] Station name persisted: "));
-      Serial.println(gStationName);
+    if (newName && newName[0] != 0) {
+      strncpy(stationName, newName, stationNameSize - 1);
+      stationName[stationNameSize - 1] = 0;
+      WriteEEStationName(stationName);
+    }
+    // Persistance du WiFi de secours (peut être vide pour le supprimer)
+    const char* newAltSsid = customAltSsid.getValue();
+    const char* newAltPass = customAltPass.getValue();
+    if (newAltSsid && newAltSsid[0] != 0) {
+      strncpy(altSsid, newAltSsid, altSsidSize - 1);
+      altSsid[altSsidSize - 1] = 0;
+    } else {
+      altSsid[0] = 0;
+    }
+    // Si l'utilisateur a saisi un nouveau password, on l'utilise ; sinon, on
+    // conserve celui déjà en EEPROM (newAltPass == "" car non pré-rempli).
+    // Donc on ne réécrit le password que si l'utilisateur a tapé quelque chose.
+    if (newAltPass && newAltPass[0] != 0) {
+      strncpy(altPass, newAltPass, altPassSize - 1);
+      altPass[altPassSize - 1] = 0;
+    }
+    WriteEEAltWiFi(altSsid, altPass);
+    EEPROM.commit();
+
+    Serial.print(F("[WiFi] Station persisted: "));
+    Serial.println(stationName);
+    if (altSsid[0] != 0) {
+      Serial.print(F("[WiFi] Backup SSID persisted: "));
+      Serial.println(altSsid);
+    } else {
+      Serial.println(F("[WiFi] No backup SSID configured."));
     }
   }
+  return configured;
+}
 
-  gWifiPortalOk = (WiFi.status() == WL_CONNECTED);
+// -----------------------------------------------------------------------------
+// wifiPortal_setup()
+// À appeler UNE FOIS au démarrage, AVANT toute autre opération WiFi.
+// -----------------------------------------------------------------------------
+void wifiPortal_setup() {
+  char altSsid[33] = "";
+  char altPass[65] = "";
 
-  if (gWifiPortalOk) {
-    Serial.print(F("[WiFi] Connected, IP: "));
-    Serial.println(WiFi.localIP());
-    Serial.print(F("[WiFi] Station: "));
-    Serial.println(gStationName);
-  } else {
-    Serial.println(F("[WiFi] Not connected after portal/auto-connect."));
+  // 1. Charger depuis EEPROM
+  ReadEEStationName(gStationName, sizeof(gStationName));
+  if (gStationName[0] == 0) {
+    buildDefaultStationName(gStationName, sizeof(gStationName));
+  }
+  ReadEEAltWiFi(altSsid, sizeof(altSsid), altPass, sizeof(altPass));
+
+  // 2. Double reset → portail forcé (skip toutes les tentatives auto)
+  drd = new DoubleResetDetector(DRD_TIMEOUT, DRD_ADDRESS);
+  if (drd->detectDoubleReset()) {
+    Serial.println(F("\n[WiFi] Double reset detected -> opening config portal"));
+    runConfigPortal(gStationName, sizeof(gStationName),
+                    altSsid, sizeof(altSsid),
+                    altPass, sizeof(altPass));
+    gWifiPortalOk = (WiFi.status() == WL_CONNECTED);
+    return;
   }
 
-  // 8. Le DRD a maintenant rempli son rôle initial. On déclenche un timer
-  //    qui, au bout de DRD_TIMEOUT secondes, marquera "boot stable" pour
-  //    qu'un prochain power-cycle ne soit pas vu comme un double reset.
-  //    Le `drd->loop()` dans la boucle principale gère ça.
+  // 3. Tentative WiFi primaire (credentials persistés en flash)
+  if (tryPrimaryWifi()) {
+    gWifiPortalOk = true;
+    Serial.print(F("[WiFi] Connected (primary), IP: "));
+    Serial.println(WiFi.localIP());
+    return;
+  }
+
+  // 4. Tentative WiFi de secours (si configuré)
+  if (altSsid[0] != 0 && tryAltWifi(altSsid, altPass)) {
+    gWifiPortalOk = true;
+    Serial.print(F("[WiFi] Connected (backup), IP: "));
+    Serial.println(WiFi.localIP());
+    return;
+  }
+
+  // 5. Tout a échoué → portail captif
+  Serial.println(F("[WiFi] Primary+backup failed -> opening config portal"));
+  runConfigPortal(gStationName, sizeof(gStationName),
+                  altSsid, sizeof(altSsid),
+                  altPass, sizeof(altPass));
+  gWifiPortalOk = (WiFi.status() == WL_CONNECTED);
+  if (gWifiPortalOk) {
+    Serial.print(F("[WiFi] Connected after portal, IP: "));
+    Serial.println(WiFi.localIP());
+  }
 }
 
 // -----------------------------------------------------------------------------
 // wifiPortal_loop()
-// À appeler à chaque tour de loop(). Sans cet appel, le DRD ne pourra
-// jamais reset son flag → un reboot normal serait interprété comme un
-// double reset au prochain boot.
 // -----------------------------------------------------------------------------
 void wifiPortal_loop() {
   if (drd) drd->loop();

@@ -50,10 +50,10 @@
 // EEPROM
 // -----------------------------------------------------------------------------
 // Taille totale du buffer EEPROM virtuel de l'ESP8266 (en flash).
-// 96 octets : 30 octets de slots historiques (cal SQM, cal temp, contraste,
-// flags) + 33 octets pour le nom de station personnalisé (v2.3.0) + marge.
+// 192 octets : 30 octets de slots historiques + 33 nom de station (v2.3.0)
+// + 33 SSID secours + 65 password secours (v2.3.1) + marge.
 // Si vous ajoutez de nouveaux champs, augmentez cette valeur en consequence.
-#define EEPROM_SIZE 96
+#define EEPROM_SIZE 192
 
 // -----------------------------------------------------------------------------
 // Debug flags
