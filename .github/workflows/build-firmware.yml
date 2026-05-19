@@ -160,7 +160,7 @@ jobs:
       #     esptool.py
       # ----------------------------------------------------------------------
       - name: Update / create "latest-wifimanager" prerelease
-        if: github.event_name == 'push' && github.ref == 'refs/heads/wifimanager'
+        if: github.ref == 'refs/heads/wifimanager' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest-wifimanager
