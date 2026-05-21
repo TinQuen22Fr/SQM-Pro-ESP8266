@@ -157,6 +157,18 @@ static bool runConfigPortal(char* stationName, size_t stationNameSize,
     if (newName && newName[0] != 0) {
       strncpy(stationName, newName, stationNameSize - 1);
       stationName[stationNameSize - 1] = 0;
+      // v2.3.2 : trim côté firmware avant persistance EEPROM, pour éviter
+      // qu'un espace saisi par mégarde dans le portail captif ne se
+      // propage en URL malformée à chaque push HTTPS.
+      {
+        char* p = stationName;
+        while (*p == ' ' || *p == '\t') p++;
+        if (p != stationName) memmove(stationName, p, strlen(p) + 1);
+        size_t n = strlen(stationName);
+        while (n > 0 && (stationName[n-1] == ' ' || stationName[n-1] == '\t')) {
+          stationName[--n] = '\0';
+        }
+      }
       WriteEEStationName(stationName);
     }
     // Persistance du WiFi de secours (peut être vide pour le supprimer)
@@ -203,6 +215,10 @@ void wifiPortal_setup() {
   if (gStationName[0] == 0) {
     buildDefaultStationName(gStationName, sizeof(gStationName));
   }
+  // v2.3.2 : défense en profondeur — supprime les espaces leading/trailing
+  // saisis par erreur dans le portail captif (ex: "SQM-Quentin "). Sans ce
+  // trim, le firmware générerait une URL invalide à chaque push HTTPS.
+  sqm_sanitize_station_name();
   ReadEEAltWiFi(altSsid, sizeof(altSsid), altPass, sizeof(altPass));
 
   // 2. Double reset → portail forcé (skip toutes les tentatives auto)

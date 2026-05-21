@@ -27,6 +27,55 @@
 extern char gStationName[33];
 extern bool gWifiPortalOk;
 
+// ---------------------------------------------------------------------------
+// urlEncode() — encode une chaîne pour usage en query string HTTP.
+// Indispensable depuis v2.3.2 : avant, un gStationName contenant un espace
+// (ou n'importe quel caractère non-ASCII) générait une URL invalide et nginx
+// renvoyait HTTP 400 sans même atteindre le backend.
+// Caractères "unreserved" (RFC 3986 §2.3) : [A-Za-z0-9-_.~] -> conservés.
+// Tous les autres sont encodés en %XX (hex majuscules).
+// ---------------------------------------------------------------------------
+static String urlEncode(const String& s) {
+  String out;
+  out.reserve(s.length() + 8);
+  const char hex[] = "0123456789ABCDEF";
+  for (size_t i = 0; i < s.length(); i++) {
+    unsigned char c = (unsigned char)s[i];
+    bool safe = (c >= 'A' && c <= 'Z') ||
+                (c >= 'a' && c <= 'z') ||
+                (c >= '0' && c <= '9') ||
+                c == '-' || c == '_' || c == '.' || c == '~';
+    if (safe) {
+      out += (char)c;
+    } else {
+      out += '%';
+      out += hex[(c >> 4) & 0x0F];
+      out += hex[c & 0x0F];
+    }
+  }
+  return out;
+}
+
+// Supprime les espaces leading/trailing d'un buffer C-string (in-place).
+// Défense en profondeur : appelé après lecture EEPROM du gStationName pour
+// neutraliser les saisies utilisateur maladroites ("SQM-Quentin " etc.).
+static void trimInPlace(char* s) {
+  if (!s || !*s) return;
+  // Trim leading
+  char* p = s;
+  while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') p++;
+  if (p != s) memmove(s, p, strlen(p) + 1);
+  // Trim trailing
+  size_t n = strlen(s);
+  while (n > 0 && (s[n-1] == ' ' || s[n-1] == '\t' ||
+                   s[n-1] == '\r' || s[n-1] == '\n')) {
+    s[--n] = '\0';
+  }
+}
+
+// Exposée pour WiFiPortal.ino (cleanup défensif après lecture EEPROM).
+void sqm_sanitize_station_name() { trimInPlace(gStationName); }
+
 void wifi_setup() {
   // Avant la v2.3.0, cette fonction faisait WiFi.begin(ssid, password).
   // Désormais c'est wifiPortal_setup() (appelé une seule fois au démarrage)
@@ -110,8 +159,14 @@ void wifi_main(double mpsas, double dmpsas, int temp, byte hum, int pres) {
   Serial.print("Station ID: "); Serial.println(gStationName);
 #endif
 
-  url  = "?ID=";  url += gStationName;  // <-- nom dynamique depuis EEPROM
-  url += "&KEY="; url += sensor_key;
+  // v2.3.2 : URL-encodage systématique des deux seuls champs susceptibles
+  // de contenir des caractères "exotiques" (espaces, accents, etc.). Sans
+  // cet encodage, un espace brut dans gStationName casse l'URL et nginx
+  // rejette en HTTP 400 avant même que le backend ne voie la requête.
+  // Les autres champs (T, H, P, S, D, V, L, Alt, Lat, Lon, Vpct) sont
+  // toujours numériques et ne nécessitent pas d'encodage.
+  url  = "?ID=";  url += urlEncode(String(gStationName));
+  url += "&KEY="; url += urlEncode(String(sensor_key));
   url += "&T=";   url += temp;
   url += "&H=";   url += hum;
   url += "&P=";   url += pres / 100;
