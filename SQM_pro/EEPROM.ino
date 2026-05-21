@@ -30,6 +30,13 @@
 #define EEPROM_ALT_PASS_INDEX_S 96
 #define EEPROM_ALT_PASS_MAX     64
 
+// v2.3.3 - Toggle "Night-only push" configurable depuis le portail captif.
+// 1 octet à l'offset 160 : marker 'P' (= persisté) puis 1 octet valeur
+// ('1' = push uniquement la nuit / '0' = push toujours, mode test).
+// Si non persisté, on retombe sur le défaut Config.h (#define NIGHT_ONLY_PUSH_ON).
+#define EEPROM_NIGHT_ONLY_INDEX_C  160
+#define EEPROM_NIGHT_ONLY_INDEX_V  161
+
 // Note : EEPROM_SIZE est défini dans Config.h pour être visible dans tous
 // les .ino, indépendamment de l'ordre de concaténation arduino-cli.
 
@@ -259,3 +266,25 @@ void WriteEEAltWiFi(const char *ssid, const char *pass) {
     EEPROM.write(EEPROM_ALT_PASS_INDEX_S, 0);
   }
 }
+
+
+// -----------------------------------------------------------------------------
+// v2.3.3 - Night-only push toggle (configurable via portail captif)
+// -----------------------------------------------------------------------------
+// Retourne `true` si la valeur a été lue avec succès depuis l'EEPROM (et
+// remplit `*out`). Retourne `false` si rien n'a été persisté → l'appelant
+// utilisera son défaut compile-time.
+bool ReadEENightOnly(bool *out) {
+  if (EEPROM.read(EEPROM_NIGHT_ONLY_INDEX_C) != 'P') {
+    return false;  // jamais persisté → utiliser le défaut Config.h
+  }
+  uint8_t v = EEPROM.read(EEPROM_NIGHT_ONLY_INDEX_V);
+  if (out) *out = (v == '1' || v == 1);
+  return true;
+}
+
+void WriteEENightOnly(bool enabled) {
+  EEPROM.write(EEPROM_NIGHT_ONLY_INDEX_C, 'P');
+  EEPROM.write(EEPROM_NIGHT_ONLY_INDEX_V, enabled ? '1' : '0');
+}
+

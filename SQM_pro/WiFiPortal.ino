@@ -61,6 +61,14 @@
 DoubleResetDetector* drd = nullptr;
 char gStationName[33] = "";
 bool gWifiPortalOk = false;
+// v2.3.3 — toggle runtime "push uniquement la nuit".
+// Initialisé au défaut compile-time (Config.h #define NIGHT_ONLY_PUSH_ON).
+// Surchargé par la valeur EEPROM si elle existe (cf. wifiPortal_setup).
+#ifdef NIGHT_ONLY_PUSH_ON
+bool gNightOnlyPush = true;
+#else
+bool gNightOnlyPush = false;
+#endif
 
 // -----------------------------------------------------------------------------
 // Helpers internes
@@ -136,10 +144,22 @@ static bool runConfigPortal(char* stationName, size_t stationNameSize,
     "", 64,
     " type=\"password\""
   );
+  // v2.3.3 — toggle "Push uniquement la nuit"
+  // Implémenté comme un input texte "0" / "1" (WiFiManager n'a pas de
+  // widget checkbox natif). Label explicite pour ne pas perdre le user.
+  char nightOnlyDefault[2];
+  nightOnlyDefault[0] = gNightOnlyPush ? '1' : '0';
+  nightOnlyDefault[1] = '\0';
+  WiFiManagerParameter customNightOnly(
+    "night_only",
+    "Push nuit seulement ? (1=oui, 0=mode test)",
+    nightOnlyDefault, 2
+  );
 
   wm.addParameter(&customStationName);
   wm.addParameter(&customAltSsid);
   wm.addParameter(&customAltPass);
+  wm.addParameter(&customNightOnly);
 
   wm.setTitle("SQM Pro - Configuration");
   wm.setClass("invert");
@@ -188,6 +208,15 @@ static bool runConfigPortal(char* stationName, size_t stationNameSize,
       altPass[altPassSize - 1] = 0;
     }
     WriteEEAltWiFi(altSsid, altPass);
+
+    // v2.3.3 — Persistance du toggle night-only
+    const char* nightOnlyVal = customNightOnly.getValue();
+    if (nightOnlyVal && nightOnlyVal[0] != 0) {
+      // Toute valeur != "0" est considérée comme "activé" (1, true, yes, …).
+      // Le user peut donc taper "1" ou laisser "1" par défaut. "0" désactive.
+      gNightOnlyPush = (nightOnlyVal[0] != '0');
+    }
+    WriteEENightOnly(gNightOnlyPush);
     EEPROM.commit();
 
     Serial.print(F("[WiFi] Station persisted: "));
@@ -219,6 +248,18 @@ void wifiPortal_setup() {
   // saisis par erreur dans le portail captif (ex: "SQM-Quentin "). Sans ce
   // trim, le firmware générerait une URL invalide à chaque push HTTPS.
   sqm_sanitize_station_name();
+  // v2.3.3 : restaure le toggle night-only depuis l'EEPROM s'il a été
+  // configuré au moins une fois via le portail captif. Sinon on garde le
+  // défaut compile-time (cf. déclaration de gNightOnlyPush en haut).
+  bool nightFromEE;
+  if (ReadEENightOnly(&nightFromEE)) {
+    gNightOnlyPush = nightFromEE;
+    Serial.print(F("[WiFi] Night-only push (EEPROM): "));
+    Serial.println(gNightOnlyPush ? F("ON") : F("OFF (mode test)"));
+  } else {
+    Serial.print(F("[WiFi] Night-only push (default): "));
+    Serial.println(gNightOnlyPush ? F("ON") : F("OFF"));
+  }
   ReadEEAltWiFi(altSsid, sizeof(altSsid), altPass, sizeof(altPass));
 
   // 2. Double reset → portail forcé (skip toutes les tentatives auto)

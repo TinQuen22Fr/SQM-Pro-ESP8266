@@ -26,6 +26,7 @@
 // Variables exposées par WiFiPortal.ino
 extern char gStationName[33];
 extern bool gWifiPortalOk;
+extern bool gNightOnlyPush;  // v2.3.3 — toggle runtime configurable
 
 // ---------------------------------------------------------------------------
 // urlEncode() — encode une chaîne pour usage en query string HTTP.
@@ -122,9 +123,11 @@ void wifi_main(double mpsas, double dmpsas, int temp, byte hum, int pres) {
   if (!WiFiConnected) return;
 
 #ifdef NIGHT_ONLY_PUSH_ON
+  // v2.3.3 : `gNightOnlyPush` peut être réécrit à l'exécution depuis le
+  // portail captif. Si l'utilisateur l'a désactivé, on push toujours.
   // Skip push during daytime: the TSL2591 is saturated and the magnitude is
   // meaningless. The OLED keeps showing the live reading.
-  if (mpsas < NIGHT_THRESHOLD_MPSAS) {
+  if (gNightOnlyPush && mpsas < NIGHT_THRESHOLD_MPSAS) {
 #ifdef DEBUG_WIFI_ON
     Serial.print("Daytime detected (mpsas=");
     Serial.print(mpsas);

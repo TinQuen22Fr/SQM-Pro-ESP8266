@@ -244,10 +244,14 @@ void DisplSqm(double mpsas, double dmpsas, int temp, byte hum, int pres, char bl
   sprintf(_tmp, "%02d:%02d", g_hour, g_minute);
   OledDisp.print(_tmp);
 #ifdef NIGHT_ONLY_PUSH_ON
-  // Small indicator at the top-right showing whether the cloud push is
-  // active (NIGHT) or skipped (DAY) based on the current magnitude.
+  // v2.3.3 : l'indicateur OLED dépend désormais aussi du toggle runtime
+  // `gNightOnlyPush`. En mode test (toggle OFF), on affiche "ALL" pour
+  // signaler que le push est actif quelle que soit la luminosité.
+  extern bool gNightOnlyPush;
   OledDisp.setCursor(13, 0);
-  if (mpsas < NIGHT_THRESHOLD_MPSAS) {
+  if (!gNightOnlyPush) {
+    OledDisp.print("ALL");   // mode test → push toujours
+  } else if (mpsas < NIGHT_THRESHOLD_MPSAS) {
     OledDisp.print("DAY");   // daytime detected -> push skipped
   } else {
     OledDisp.print("NGT");   // night -> push active
