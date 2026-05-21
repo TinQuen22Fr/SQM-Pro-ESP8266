@@ -30,7 +30,14 @@ void ReadWeather() {
     temp = bme.getTemperature();
     if (Humidity) hum = bme.getHumidity();
     else          hum = 0;
+    // v2.3.4 : applique les 3 offsets de calibration runtime (persistés EEPROM,
+    // configurables via portail captif). Une sonde dans un boîtier fermé sub-
+    // estime/surestime de quelques degrés/% par effet de chauffe interne ;
+    // ces offsets compensent linéairement la dérive observée vs station de
+    // référence.
     temp = temp + TempCalOffset;
+    if (Humidity) hum = hum + HumCalOffset;
+    pres = pres + PresCalOffset;
   }
 }
 

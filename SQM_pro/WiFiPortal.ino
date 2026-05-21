@@ -156,10 +156,36 @@ static bool runConfigPortal(char* stationName, size_t stationNameSize,
     nightOnlyDefault, 2
   );
 
+  // v2.3.4 — Offsets calibration BME280 (Temp / Humidité / Pression).
+  // Sub/sur-estimation due à la chauffe du boîtier (typique +0.5°C / -5% RH).
+  // Saisie en float avec signe, ex: "-0.6", "+6.0", "0.0".
+  char tempOffsetBuf[10], humOffsetBuf[10], presOffsetBuf[10];
+  dtostrf(TempCalOffset, 0, 2, tempOffsetBuf);
+  dtostrf(HumCalOffset,  0, 2, humOffsetBuf);
+  dtostrf(PresCalOffset, 0, 2, presOffsetBuf);
+  WiFiManagerParameter customTempOffset(
+    "temp_offset",
+    "BME280 Offset Temperature (degC, ex -0.6)",
+    tempOffsetBuf, 8
+  );
+  WiFiManagerParameter customHumOffset(
+    "hum_offset",
+    "BME280 Offset Humidite (%, ex +6.0)",
+    humOffsetBuf, 8
+  );
+  WiFiManagerParameter customPresOffset(
+    "pres_offset",
+    "BME280 Offset Pression (Pa, ex 0.0)",
+    presOffsetBuf, 8
+  );
+
   wm.addParameter(&customStationName);
   wm.addParameter(&customAltSsid);
   wm.addParameter(&customAltPass);
   wm.addParameter(&customNightOnly);
+  wm.addParameter(&customTempOffset);
+  wm.addParameter(&customHumOffset);
+  wm.addParameter(&customPresOffset);
 
   wm.setTitle("SQM Pro - Configuration");
   wm.setClass("invert");
@@ -217,6 +243,28 @@ static bool runConfigPortal(char* stationName, size_t stationNameSize,
       gNightOnlyPush = (nightOnlyVal[0] != '0');
     }
     WriteEENightOnly(gNightOnlyPush);
+
+    // v2.3.4 — Persistance des 3 offsets BME280.
+    // atof() retourne 0.0 si la chaîne n'est pas un nombre valide → comportement
+    // sûr (= pas d'offset appliqué). Les bornes max sont vérifiées dans les
+    // helpers WriteEE*CalOffset() qui rejettent silencieusement les valeurs
+    // hors plage raisonnable.
+    extern float HumCalOffset, PresCalOffset;
+    const char* tempOff = customTempOffset.getValue();
+    const char* humOff  = customHumOffset.getValue();
+    const char* presOff = customPresOffset.getValue();
+    if (tempOff && tempOff[0] != 0) {
+      TempCalOffset = atof(tempOff);
+      WriteEETempCalOffset(TempCalOffset);
+    }
+    if (humOff && humOff[0] != 0) {
+      HumCalOffset = atof(humOff);
+      WriteEEHumCalOffset(HumCalOffset);
+    }
+    if (presOff && presOff[0] != 0) {
+      PresCalOffset = atof(presOff);
+      WriteEEPresCalOffset(PresCalOffset);
+    }
     EEPROM.commit();
 
     Serial.print(F("[WiFi] Station persisted: "));

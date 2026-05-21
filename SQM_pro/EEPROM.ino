@@ -37,6 +37,14 @@
 #define EEPROM_NIGHT_ONLY_INDEX_C  160
 #define EEPROM_NIGHT_ONLY_INDEX_V  161
 
+// v2.3.4 - Offsets calibration BME280 (humidité + pression) configurables
+// depuis le portail captif (TempCalOffset existait déjà via menu série).
+// Marker 'h'/'p' + 4 bytes float (little endian).
+#define EEPROM_HUM_CAL_INDEX_C    162
+#define EEPROM_HUM_CAL_INDEX_F    163
+#define EEPROM_PRES_CAL_INDEX_C   167
+#define EEPROM_PRES_CAL_INDEX_F   168
+
 // Note : EEPROM_SIZE est défini dans Config.h pour être visible dans tous
 // les .ino, indépendamment de l'ordre de concaténation arduino-cli.
 
@@ -76,6 +84,38 @@ void WriteEETempCalOffset(float f) {
   if ((f > 50) || (f < -50)) return; // value out of range
   EEPROM.write(EEPROM_TEMP_CAL_INDEX_C, 't');
   EEPROM_writeFloat(EEPROM_TEMP_CAL_INDEX_F, f);
+}
+
+// -----------------------------------------------------------------------------
+// v2.3.4 - Humidity calibration offset (configurable via portail captif)
+// -----------------------------------------------------------------------------
+float ReadEEHumCalOffset() {
+  if (EEPROM.read(EEPROM_HUM_CAL_INDEX_C) == 'h') {
+    return EEPROM_readFloat(EEPROM_HUM_CAL_INDEX_F);
+  }
+  return 0.0f;  // default: no correction
+}
+
+void WriteEEHumCalOffset(float f) {
+  if ((f > 50) || (f < -50)) return; // value out of range (±50% RH)
+  EEPROM.write(EEPROM_HUM_CAL_INDEX_C, 'h');
+  EEPROM_writeFloat(EEPROM_HUM_CAL_INDEX_F, f);
+}
+
+// -----------------------------------------------------------------------------
+// v2.3.4 - Pressure calibration offset (configurable via portail captif)
+// -----------------------------------------------------------------------------
+float ReadEEPresCalOffset() {
+  if (EEPROM.read(EEPROM_PRES_CAL_INDEX_C) == 'p') {
+    return EEPROM_readFloat(EEPROM_PRES_CAL_INDEX_F);
+  }
+  return 0.0f;  // default: no correction
+}
+
+void WriteEEPresCalOffset(float f) {
+  if ((f > 500) || (f < -500)) return; // value out of range (±500 Pa)
+  EEPROM.write(EEPROM_PRES_CAL_INDEX_C, 'p');
+  EEPROM_writeFloat(EEPROM_PRES_CAL_INDEX_F, f);
 }
 
 // -----------------------------------------------------------------------------

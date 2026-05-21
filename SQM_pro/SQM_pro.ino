@@ -27,7 +27,7 @@
 
     Wiring diagram / PCB: https://easyeda.com/hujer.roman/sqm-hr
 */
-#define Version       "2.3.3"
+#define Version       "2.3.4"
 #define SERIAL_NUMBER "20200604"
 
 #include "Config.h"
@@ -73,6 +73,8 @@ SQM_TSL2591 sqm = SQM_TSL2591(2591);
 
 float SqmCalOffset  = SQM_CAL_OFFSET;  // from EEPROM if present
 float TempCalOffset = TEMP_CAL_OFFSET; // from EEPROM if present
+float HumCalOffset  = 0.0f;            // v2.3.4 - from EEPROM if present
+float PresCalOffset = 0.0f;            // v2.3.4 - from EEPROM if present (Pa)
 
 boolean InitError      = false;
 boolean USBmodeON      = false;
@@ -178,6 +180,8 @@ void setup() {
 
   SqmCalOffset  = ReadEESqmCalOffset();
   TempCalOffset = ReadEETempCalOffset();
+  HumCalOffset  = ReadEEHumCalOffset();   // v2.3.4
+  PresCalOffset = ReadEEPresCalOffset();  // v2.3.4
   sqm.setCalibrationOffset(SqmCalOffset);
 
   DisplCalData();
