@@ -74,7 +74,8 @@
 // -----------------------------------------------------------------------------
 //#define OLED_FONT u8x8_font_7x14B_1x2_f
 //#define OLED_FONT u8x8_font_8x13_1x2_f
-#define OLED_FONT u8x8_font_amstrad_cpc_extended_f
+//#define OLED_FONT u8x8_font_amstrad_cpc_extended_f   // v<=2.3.9 (gras)
+#define OLED_FONT u8x8_font_pxplusibmcga_f              // v2.3.10 : IBM CGA médium (moins gras)
 
 // -----------------------------------------------------------------------------
 // Cross-file extern declarations
