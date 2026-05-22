@@ -345,7 +345,7 @@ static bool runConfigPortal(char* stationName, size_t stationNameSize,
 
     Serial.println(F("\n[WiFi] ---- Persisting offsets ----"));
 
-    // === SQM Cal Offset (v2.3.5) ===
+    // === SQM Cal Offset (v2.3.5/6/7) ===
     if (capSqmOff.length() > 0) {
       float newSqm = capSqmOff.toFloat();
       Serial.print(F("[WiFi] SQM: received='"));
@@ -354,16 +354,44 @@ static bool runConfigPortal(char* stationName, size_t stationNameSize,
       Serial.print(newSqm, 4);
       Serial.print(F(" current EEPROM="));
       Serial.println(SqmCalOffset, 4);
+
+      // v2.3.7 : dump des bytes EEPROM AVANT toute modification
+      // (pour comprendre pourquoi la 2e ecriture echoue silencieusement)
+      Serial.print(F("[WiFi] SQM: EEPROM bytes BEFORE [1..6]: "));
+      for (int i = EEPROM_SQM_CAL_INDEX_C;
+           i <= EEPROM_SQM_CAL_INDEX_F + 3; i++) {
+        Serial.print("0x"); Serial.print(EEPROM.read(i), HEX); Serial.print(' ');
+      }
+      Serial.println();
+
       if (newSqm >= -25.0f && newSqm <= 25.0f) {
         // v2.3.6: invalidate marker BEFORE rewriting (anti-cache)
         EEPROM.write(EEPROM_SQM_CAL_INDEX_C, 0xFF);
         EEPROM.commit();
-        delay(20);
+        delay(50);
+
+        // v2.3.7 : dump apres invalidation pour verifier que le 0xFF a pris
+        Serial.print(F("[WiFi] SQM: EEPROM bytes after invalidate: "));
+        for (int i = EEPROM_SQM_CAL_INDEX_C;
+             i <= EEPROM_SQM_CAL_INDEX_F + 3; i++) {
+          Serial.print("0x"); Serial.print(EEPROM.read(i), HEX); Serial.print(' ');
+        }
+        Serial.println();
+
         SqmCalOffset = newSqm;
         WriteEESqmCalOffset(SqmCalOffset);
         EEPROM.commit();
-        delay(20);
+        delay(50);
         sqm.setCalibrationOffset(SqmCalOffset);
+
+        // v2.3.7 : dump apres ecriture pour confirmation finale
+        Serial.print(F("[WiFi] SQM: EEPROM bytes AFTER write: "));
+        for (int i = EEPROM_SQM_CAL_INDEX_C;
+             i <= EEPROM_SQM_CAL_INDEX_F + 3; i++) {
+          Serial.print("0x"); Serial.print(EEPROM.read(i), HEX); Serial.print(' ');
+        }
+        Serial.println();
+
         // Readback verification
         float readback = ReadEESqmCalOffset();
         Serial.print(F("[WiFi] SQM: written, readback="));
@@ -376,6 +404,9 @@ static bool runConfigPortal(char* stationName, size_t stationNameSize,
       } else {
         Serial.println(F("[WiFi] SQM: value out of range, IGNORED"));
       }
+    } else {
+      // v2.3.7 : log explicite quand le champ est vide (= rien a faire)
+      Serial.println(F("[WiFi] SQM: capSqmOff is EMPTY, no change"));
     }
 
     // === Temp Cal Offset ===
