@@ -368,7 +368,11 @@ static bool runConfigPortal(char* stationName, size_t stationNameSize,
         float readback = ReadEESqmCalOffset();
         Serial.print(F("[WiFi] SQM: written, readback="));
         Serial.print(readback, 4);
-        Serial.println(F(readback != SqmCalOffset ? " MISMATCH!" : " OK"));
+        if (readback != SqmCalOffset) {
+          Serial.println(F(" MISMATCH!"));
+        } else {
+          Serial.println(F(" OK"));
+        }
       } else {
         Serial.println(F("[WiFi] SQM: value out of range, IGNORED"));
       }
