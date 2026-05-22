@@ -27,7 +27,7 @@
 
     Wiring diagram / PCB: https://easyeda.com/hujer.roman/sqm-hr
 */
-#define Version       "2.3.8"
+#define Version       "2.3.9"
 #define SERIAL_NUMBER "20200604"
 
 #include "Config.h"
@@ -240,7 +240,7 @@ void loop() {
   ReadWeather();
   if (ReadEEAutoTempCal()) sqm.setTemperature(temp);
   sqm.takeReading();
-  DisplSqm(sqm.mpsas, sqm.dmpsas, int(temp + 0.5), int(hum), int(pres / 100), ':');
+  DisplSqm(sqm.mpsas, sqm.dmpsas, temp, int(hum), int(pres / 100), ':');
 
   #ifdef WIFI_ON
     if (WiFiConnected) {
@@ -296,7 +296,7 @@ void loop() {
 
     sqm.takeReading();
 
-    DisplSqm(sqm.mpsas, sqm.dmpsas, int(temp + 0.5), int(hum), int(pres / 100), ':');
+    DisplSqm(sqm.mpsas, sqm.dmpsas, temp, int(hum), int(pres / 100), ':');
 
 #ifdef WIFI_ON
     if (WiFiConnected) {
@@ -686,7 +686,7 @@ void loop() {
       }
 
       // Refresh current information on the OLED
-      DisplSqm(sqm.mpsas, sqm.dmpsas, int(temp + 0.5), int(hum), int(pres / 100), '.');
+      DisplSqm(sqm.mpsas, sqm.dmpsas, temp, int(hum), int(pres / 100), '.');
       SqmCalOffset  = ReadEESqmCalOffset();
       TempCalOffset = ReadEETempCalOffset();
       sqm.setCalibrationOffset(SqmCalOffset);

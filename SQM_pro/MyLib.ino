@@ -225,7 +225,7 @@ void DisplCalData() {
   }
 }
 
-void DisplSqm(double mpsas, double dmpsas, int temp, byte hum, int pres, char blk) {
+void DisplSqm(double mpsas, double dmpsas, float temp, byte hum, int pres, char blk) {
   char _tmp[20];
   float _lat, _lng;
   if (ReadEEAutoContras()) {
@@ -270,12 +270,17 @@ void DisplSqm(double mpsas, double dmpsas, int temp, byte hum, int pres, char bl
   if (mpsas < 10) OledDisp.print('0');
   OledDisp.print(mpsas);
   OledDisp.print("mas");
-  OledDisp.print(char(0xb2));
-  if (((temp < 0) ? -temp : temp) < 10) OledDisp.print(' ');
-  if (temp >= 0) OledDisp.print(' ');
-  OledDisp.print(temp);
-  OledDisp.print(char(0xb0));
-  OledDisp.print('C');
+  // v2.3.9 : température affichée avec 1 décimale (ex: 22.5C / -9.5C).
+  // Le symbole `²` (après mas) et `°` (avant C) ont été retirés pour
+  // libérer la colonne nécessaire à la décimale sur l'OLED 16 colonnes.
+  {
+    float _at = (temp < 0) ? -temp : temp;
+    char  _sign = (temp < 0) ? '-' : ' ';
+    if (_at < 10) OledDisp.print(' ');
+    OledDisp.print(_sign);
+    OledDisp.print(String(_at, 1));
+    OledDisp.print('C');
+  }
   OledDisp.setCursor(0, 4);
   OledDisp.print("H:");
   if (hum < 10)      { OledDisp.print("  "); }
