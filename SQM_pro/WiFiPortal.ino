@@ -274,24 +274,23 @@ static bool runConfigPortal(char* stationName, size_t stationNameSize,
   Serial.println(callbackFired ? F("true") : F("false"));
 
   // ---------------------------------------------------------------------------
-  // v2.3.6 — Persistance : on utilise EXCLUSIVEMENT les valeurs capturées par
+  // v2.3.8 — Persistance : on utilise EXCLUSIVEMENT les valeurs capturées par
   // le callback (pas les getValue() post-portal qui peuvent être incohérents).
-  // Fallback : si le callback ne s'est pas déclenché (bug WiFiManager rare),
-  // on retombe sur getValue() pour ne pas perdre les saisies.
+  //
+  // CORRECTION CRITIQUE v2.3.8 :
+  // ❌ v2.3.5/6/7 testaient `if (configured)` = booleen retourne par
+  //    startConfigPortal(). MAIS configured=false quand l'utilisateur a
+  //    seulement modifie des parametres custom (offsets, station name)
+  //    SANS toucher au SSID/password principal. Du coup le code de save
+  //    EEPROM n'etait JAMAIS execute apres la 1ere ecriture !
+  // ✅ On utilise maintenant `callbackFired` comme indicateur fiable : si
+  //    le callback s'est declenche, c'est que l'utilisateur a clique Save
+  //    dans le portail (vs timeout) → on persiste TOUT systematiquement.
   // ---------------------------------------------------------------------------
-  if (configured) {
-    // Si callback pas déclenché → fallback sur getValue (compat)
-    if (!callbackFired) {
-      Serial.println(F("[WiFi] WARN: callback not fired, fallback on getValue()"));
-      capStationName = String(customStationName.getValue());
-      capAltSsid     = String(customAltSsid.getValue());
-      capAltPass     = String(customAltPass.getValue());
-      capNightOnly   = String(customNightOnly.getValue());
-      capSqmOff      = String(customSqmOffset.getValue());
-      capTempOff     = String(customTempOffset.getValue());
-      capHumOff      = String(customHumOffset.getValue());
-      capPresOff     = String(customPresOffset.getValue());
-    }
+  if (callbackFired) {
+    // Note : callbackFired=true garantit que les capXxx sont remplies par
+    // le callback (qui utilise wm.server->arg + fallback getValue). Plus
+    // besoin de fallback ici.
 
     // -------- Nom de station --------
     if (capStationName.length() > 0) {
