@@ -180,7 +180,9 @@ void DisplFirstPage() {
   }
   page = 1;
   OledDisp.setCursor(0, 0);
-  OledDisp.print("SQM Ready V");
+  // v2.3.11 : raccourci "SQM Ready V" -> "SQM v" pour tenir sur 16 cols
+  // (sinon les versions 2 chiffres comme 2.3.10 sont tronquées)
+  OledDisp.print("SQM v");
   OledDisp.print(Version);
   OledDisp.setCursor(0, 2);
   OledDisp.print("SN: ");
