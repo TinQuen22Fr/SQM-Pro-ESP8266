@@ -45,6 +45,14 @@
 #define EEPROM_PRES_CAL_INDEX_C   167
 #define EEPROM_PRES_CAL_INDEX_F   168
 
+// v2.3.5 - SqmCalOffset configurable depuis le portail captif (l'offset
+// existait deja en EEPROM mais on l'ajoute aussi a l'UI WiFiManager pour
+// permettre la calibration terrain sans PC ni Arduino IDE, juste avec
+// un telephone. Live-update : sqm.setCalibrationOffset() est appele
+// immediatement apres save sans necessiter de reboot.
+// NB : EEPROM_SQM_CAL_INDEX_* est deja defini plus haut (hérité du
+// firmware Unihedron d'origine), pas besoin de nouvelles defines.
+
 // Note : EEPROM_SIZE est défini dans Config.h pour être visible dans tous
 // les .ino, indépendamment de l'ordre de concaténation arduino-cli.
 

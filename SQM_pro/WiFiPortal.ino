@@ -179,10 +179,27 @@ static bool runConfigPortal(char* stationName, size_t stationNameSize,
     presOffsetBuf, 8
   );
 
+  // v2.3.5 — Offset de calibration SQM (mpsas).
+  // Ajusté en comparant avec un SQM-L Unihedron officiel (reference). La sonde
+  // DIY (TSL2591 sans lentille) capture un FOV plus large (~70°) que le SQM-L
+  // (~20°), ce qui sur-estime la pollution lumineuse latérale et donne une
+  // magnitude artificiellement plus basse. L'offset compense ce biais.
+  // Convention : offset POSITIF si DIY < officiel (= DIY mesure trop clair).
+  // Plage acceptee : -10.0 a +10.0 mpsas (verifie dans WriteEESqmCalOffset).
+  // Live-update : applique immediatement sans reboot apres save.
+  char sqmOffsetBuf[10];
+  dtostrf(SqmCalOffset, 0, 2, sqmOffsetBuf);
+  WiFiManagerParameter customSqmOffset(
+    "sqm_offset",
+    "SQM Cal Offset (mpsas, ex +2.25)",
+    sqmOffsetBuf, 8
+  );
+
   wm.addParameter(&customStationName);
   wm.addParameter(&customAltSsid);
   wm.addParameter(&customAltPass);
   wm.addParameter(&customNightOnly);
+  wm.addParameter(&customSqmOffset);
   wm.addParameter(&customTempOffset);
   wm.addParameter(&customHumOffset);
   wm.addParameter(&customPresOffset);
@@ -250,9 +267,22 @@ static bool runConfigPortal(char* stationName, size_t stationNameSize,
     // helpers WriteEE*CalOffset() qui rejettent silencieusement les valeurs
     // hors plage raisonnable.
     extern float HumCalOffset, PresCalOffset;
+    extern SQM_TSL2591 sqm;  // v2.3.5 : pour applique SqmCalOffset live
+    const char* sqmOff  = customSqmOffset.getValue();
     const char* tempOff = customTempOffset.getValue();
     const char* humOff  = customHumOffset.getValue();
     const char* presOff = customPresOffset.getValue();
+
+    // v2.3.5 — Offset de calibration SQM
+    // Live-update : on appelle sqm.setCalibrationOffset() pour appliquer
+    // immédiatement la nouvelle valeur sans attendre un reboot.
+    if (sqmOff && sqmOff[0] != 0) {
+      SqmCalOffset = atof(sqmOff);
+      WriteEESqmCalOffset(SqmCalOffset);
+      sqm.setCalibrationOffset(SqmCalOffset);
+      Serial.print(F("[WiFi] SQM Cal Offset applique : "));
+      Serial.println(SqmCalOffset, 2);
+    }
     if (tempOff && tempOff[0] != 0) {
       TempCalOffset = atof(tempOff);
       WriteEETempCalOffset(TempCalOffset);
