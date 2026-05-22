@@ -209,20 +209,95 @@ static bool runConfigPortal(char* stationName, size_t stationNameSize,
   wm.setConfigPortalTimeout(WIFI_PORTAL_TIMEOUT);
   wm.setBreakAfterConfig(true);
 
+  // ---------------------------------------------------------------------------
+  // v2.3.6 — setSaveParamsCallback : capture les valeurs AU MOMENT du submit
+  // ---------------------------------------------------------------------------
+  // Bug v2.3.5 : appeler getValue() APRÈS startConfigPortal() retourne parfois
+  // l'ancienne valeur du buffer (cache WiFiManager). La méthode officielle est
+  // d'utiliser un callback qui s'exécute pendant le handling du POST HTTP,
+  // donc avant que le webserver embarqué ne soit arrêté.
+  //
+  // On capture les valeurs DANS DES STRINGS HEAP (pas pointeurs vers buffers
+  // locaux) pour éviter tout problème de durée de vie.
+  String capStationName, capAltSsid, capAltPass;
+  String capNightOnly, capSqmOff, capTempOff, capHumOff, capPresOff;
+  bool   callbackFired = false;
+
+  wm.setSaveParamsCallback([&]() {
+    callbackFired = true;
+    // v2.3.6 : on tente 2 méthodes en parallèle :
+    //  1. Via wm.server->arg(name) qui lit BRUT le POST HTTP (= source truth)
+    //  2. Via customXxx.getValue() (= méthode WiFiManager standard)
+    // Si les 2 diffèrent, on log les 2 et on PRIVILÉGIE server->arg() qui
+    // est plus proche du fil HTTP donc immune au cache WiFiManager.
+    auto pickArg = [&](const char* paramName, const char* fallback) -> String {
+      String fromHttp;
+      if (wm.server) {
+        fromHttp = wm.server->arg(paramName);
+        if (fromHttp.length() > 0) return fromHttp;
+      }
+      return String(fallback ? fallback : "");
+    };
+    capStationName = pickArg("station_name", customStationName.getValue());
+    capAltSsid     = pickArg("alt_ssid",     customAltSsid.getValue());
+    capAltPass     = pickArg("alt_pass",     customAltPass.getValue());
+    capNightOnly   = pickArg("night_only",   customNightOnly.getValue());
+    capSqmOff      = pickArg("sqm_offset",   customSqmOffset.getValue());
+    capTempOff     = pickArg("temp_offset",  customTempOffset.getValue());
+    capHumOff      = pickArg("hum_offset",   customHumOffset.getValue());
+    capPresOff     = pickArg("pres_offset",  customPresOffset.getValue());
+
+    Serial.println(F("\n[WiFi] setSaveParamsCallback() FIRED ----"));
+    Serial.print(F("[WiFi]   station='"));   Serial.print(capStationName); Serial.println("'");
+    Serial.print(F("[WiFi]   alt_ssid='"));  Serial.print(capAltSsid);     Serial.println("'");
+    Serial.print(F("[WiFi]   alt_pass=[")); Serial.print(capAltPass.length()); Serial.println(F(" chars]"));
+    Serial.print(F("[WiFi]   night_only='")); Serial.print(capNightOnly); Serial.println("'");
+    Serial.print(F("[WiFi]   sqm_offset='")); Serial.print(capSqmOff);    Serial.println("'");
+    Serial.print(F("[WiFi]   temp_offset='")); Serial.print(capTempOff); Serial.println("'");
+    Serial.print(F("[WiFi]   hum_offset='")); Serial.print(capHumOff);   Serial.println("'");
+    Serial.print(F("[WiFi]   pres_offset='")); Serial.print(capPresOff); Serial.println("'");
+    // Comparaison getValue() vs HTTP raw (debug : diff = bug confirmé)
+    Serial.print(F("[WiFi]   [debug] sqm_offset via getValue()='"));
+    Serial.print(customSqmOffset.getValue());
+    Serial.println("'");
+    Serial.println(F("[WiFi] ---- END callback ----\n"));
+  });
+
   // On utilise startConfigPortal qui ouvre toujours le portail (vs autoConnect
   // qui tente d'abord une connexion). Ici on a déjà fait nos propres tentatives
   // primaire + secours en amont, donc on veut juste l'UI.
   bool configured = wm.startConfigPortal(apName);
 
-  // Persistance du nom de station
+  Serial.print(F("[WiFi] Portal closed. configured="));
+  Serial.print(configured ? F("true") : F("false"));
+  Serial.print(F(" callbackFired="));
+  Serial.println(callbackFired ? F("true") : F("false"));
+
+  // ---------------------------------------------------------------------------
+  // v2.3.6 — Persistance : on utilise EXCLUSIVEMENT les valeurs capturées par
+  // le callback (pas les getValue() post-portal qui peuvent être incohérents).
+  // Fallback : si le callback ne s'est pas déclenché (bug WiFiManager rare),
+  // on retombe sur getValue() pour ne pas perdre les saisies.
+  // ---------------------------------------------------------------------------
   if (configured) {
-    const char* newName = customStationName.getValue();
-    if (newName && newName[0] != 0) {
-      strncpy(stationName, newName, stationNameSize - 1);
+    // Si callback pas déclenché → fallback sur getValue (compat)
+    if (!callbackFired) {
+      Serial.println(F("[WiFi] WARN: callback not fired, fallback on getValue()"));
+      capStationName = String(customStationName.getValue());
+      capAltSsid     = String(customAltSsid.getValue());
+      capAltPass     = String(customAltPass.getValue());
+      capNightOnly   = String(customNightOnly.getValue());
+      capSqmOff      = String(customSqmOffset.getValue());
+      capTempOff     = String(customTempOffset.getValue());
+      capHumOff      = String(customHumOffset.getValue());
+      capPresOff     = String(customPresOffset.getValue());
+    }
+
+    // -------- Nom de station --------
+    if (capStationName.length() > 0) {
+      strncpy(stationName, capStationName.c_str(), stationNameSize - 1);
       stationName[stationNameSize - 1] = 0;
-      // v2.3.2 : trim côté firmware avant persistance EEPROM, pour éviter
-      // qu'un espace saisi par mégarde dans le portail captif ne se
-      // propage en URL malformée à chaque push HTTPS.
+      // v2.3.2 : trim côté firmware
       {
         char* p = stationName;
         while (*p == ' ' || *p == '\t') p++;
@@ -234,68 +309,120 @@ static bool runConfigPortal(char* stationName, size_t stationNameSize,
       }
       WriteEEStationName(stationName);
     }
-    // Persistance du WiFi de secours (peut être vide pour le supprimer)
-    const char* newAltSsid = customAltSsid.getValue();
-    const char* newAltPass = customAltPass.getValue();
-    if (newAltSsid && newAltSsid[0] != 0) {
-      strncpy(altSsid, newAltSsid, altSsidSize - 1);
+
+    // -------- WiFi de secours --------
+    if (capAltSsid.length() > 0) {
+      strncpy(altSsid, capAltSsid.c_str(), altSsidSize - 1);
       altSsid[altSsidSize - 1] = 0;
     } else {
       altSsid[0] = 0;
     }
-    // Si l'utilisateur a saisi un nouveau password, on l'utilise ; sinon, on
-    // conserve celui déjà en EEPROM (newAltPass == "" car non pré-rempli).
-    // Donc on ne réécrit le password que si l'utilisateur a tapé quelque chose.
-    if (newAltPass && newAltPass[0] != 0) {
-      strncpy(altPass, newAltPass, altPassSize - 1);
+    if (capAltPass.length() > 0) {
+      strncpy(altPass, capAltPass.c_str(), altPassSize - 1);
       altPass[altPassSize - 1] = 0;
     }
     WriteEEAltWiFi(altSsid, altPass);
 
-    // v2.3.3 — Persistance du toggle night-only
-    const char* nightOnlyVal = customNightOnly.getValue();
-    if (nightOnlyVal && nightOnlyVal[0] != 0) {
-      // Toute valeur != "0" est considérée comme "activé" (1, true, yes, …).
-      // Le user peut donc taper "1" ou laisser "1" par défaut. "0" désactive.
-      gNightOnlyPush = (nightOnlyVal[0] != '0');
+    // -------- Toggle night-only --------
+    if (capNightOnly.length() > 0) {
+      gNightOnlyPush = (capNightOnly[0] != '0');
     }
     WriteEENightOnly(gNightOnlyPush);
 
-    // v2.3.4 — Persistance des 3 offsets BME280.
-    // atof() retourne 0.0 si la chaîne n'est pas un nombre valide → comportement
-    // sûr (= pas d'offset appliqué). Les bornes max sont vérifiées dans les
-    // helpers WriteEE*CalOffset() qui rejettent silencieusement les valeurs
-    // hors plage raisonnable.
+    // ------------------------------------------------------------------------
+    // v2.3.6 — Persistance des 4 offsets (SQM + Temp + Hum + Pres)
+    //
+    // Pour CHAQUE offset, on :
+    // 1. Log la valeur reçue ET la valeur actuelle EEPROM (avant écriture)
+    // 2. INVALIDE le marker EEPROM (écrit 0xFF dessus) avant de réécrire,
+    //    pour contourner toute optimisation cache potentielle de la lib
+    //    EEPROM ESP8266 qui pourrait skipper des writes "redondants"
+    // 3. Réécrit le marker correct + le float
+    // 4. Log la valeur relue depuis EEPROM APRÈS commit pour confirmation
+    // ------------------------------------------------------------------------
     extern float HumCalOffset, PresCalOffset;
-    extern SQM_TSL2591 sqm;  // v2.3.5 : pour applique SqmCalOffset live
-    const char* sqmOff  = customSqmOffset.getValue();
-    const char* tempOff = customTempOffset.getValue();
-    const char* humOff  = customHumOffset.getValue();
-    const char* presOff = customPresOffset.getValue();
+    extern SQM_TSL2591 sqm;
 
-    // v2.3.5 — Offset de calibration SQM
-    // Live-update : on appelle sqm.setCalibrationOffset() pour appliquer
-    // immédiatement la nouvelle valeur sans attendre un reboot.
-    if (sqmOff && sqmOff[0] != 0) {
-      SqmCalOffset = atof(sqmOff);
-      WriteEESqmCalOffset(SqmCalOffset);
-      sqm.setCalibrationOffset(SqmCalOffset);
-      Serial.print(F("[WiFi] SQM Cal Offset applique : "));
-      Serial.println(SqmCalOffset, 2);
+    Serial.println(F("\n[WiFi] ---- Persisting offsets ----"));
+
+    // === SQM Cal Offset (v2.3.5) ===
+    if (capSqmOff.length() > 0) {
+      float newSqm = capSqmOff.toFloat();
+      Serial.print(F("[WiFi] SQM: received='"));
+      Serial.print(capSqmOff);
+      Serial.print(F("' parsed="));
+      Serial.print(newSqm, 4);
+      Serial.print(F(" current EEPROM="));
+      Serial.println(SqmCalOffset, 4);
+      if (newSqm >= -25.0f && newSqm <= 25.0f) {
+        // v2.3.6: invalidate marker BEFORE rewriting (anti-cache)
+        EEPROM.write(EEPROM_SQM_CAL_INDEX_C, 0xFF);
+        EEPROM.commit();
+        delay(20);
+        SqmCalOffset = newSqm;
+        WriteEESqmCalOffset(SqmCalOffset);
+        EEPROM.commit();
+        delay(20);
+        sqm.setCalibrationOffset(SqmCalOffset);
+        // Readback verification
+        float readback = ReadEESqmCalOffset();
+        Serial.print(F("[WiFi] SQM: written, readback="));
+        Serial.print(readback, 4);
+        Serial.println(F(readback != SqmCalOffset ? " MISMATCH!" : " OK"));
+      } else {
+        Serial.println(F("[WiFi] SQM: value out of range, IGNORED"));
+      }
     }
-    if (tempOff && tempOff[0] != 0) {
-      TempCalOffset = atof(tempOff);
-      WriteEETempCalOffset(TempCalOffset);
+
+    // === Temp Cal Offset ===
+    if (capTempOff.length() > 0) {
+      float v = capTempOff.toFloat();
+      Serial.print(F("[WiFi] Temp: received='")); Serial.print(capTempOff);
+      Serial.print(F("' parsed=")); Serial.print(v, 4);
+      Serial.print(F(" current=")); Serial.println(TempCalOffset, 4);
+      if (v >= -50.0f && v <= 50.0f) {
+        EEPROM.write(EEPROM_TEMP_CAL_INDEX_C, 0xFF); EEPROM.commit(); delay(20);
+        TempCalOffset = v;
+        WriteEETempCalOffset(TempCalOffset);
+        EEPROM.commit(); delay(20);
+        Serial.print(F("[WiFi] Temp: written, readback="));
+        Serial.println(ReadEETempCalOffset(), 4);
+      }
     }
-    if (humOff && humOff[0] != 0) {
-      HumCalOffset = atof(humOff);
-      WriteEEHumCalOffset(HumCalOffset);
+
+    // === Hum Cal Offset (v2.3.4) ===
+    if (capHumOff.length() > 0) {
+      float v = capHumOff.toFloat();
+      Serial.print(F("[WiFi] Hum: received='")); Serial.print(capHumOff);
+      Serial.print(F("' parsed=")); Serial.print(v, 4);
+      Serial.print(F(" current=")); Serial.println(HumCalOffset, 4);
+      if (v >= -50.0f && v <= 50.0f) {
+        EEPROM.write(EEPROM_HUM_CAL_INDEX_C, 0xFF); EEPROM.commit(); delay(20);
+        HumCalOffset = v;
+        WriteEEHumCalOffset(HumCalOffset);
+        EEPROM.commit(); delay(20);
+        Serial.print(F("[WiFi] Hum: written, readback="));
+        Serial.println(ReadEEHumCalOffset(), 4);
+      }
     }
-    if (presOff && presOff[0] != 0) {
-      PresCalOffset = atof(presOff);
-      WriteEEPresCalOffset(PresCalOffset);
+
+    // === Pres Cal Offset (v2.3.4) ===
+    if (capPresOff.length() > 0) {
+      float v = capPresOff.toFloat();
+      Serial.print(F("[WiFi] Pres: received='")); Serial.print(capPresOff);
+      Serial.print(F("' parsed=")); Serial.print(v, 4);
+      Serial.print(F(" current=")); Serial.println(PresCalOffset, 4);
+      if (v >= -500.0f && v <= 500.0f) {
+        EEPROM.write(EEPROM_PRES_CAL_INDEX_C, 0xFF); EEPROM.commit(); delay(20);
+        PresCalOffset = v;
+        WriteEEPresCalOffset(PresCalOffset);
+        EEPROM.commit(); delay(20);
+        Serial.print(F("[WiFi] Pres: written, readback="));
+        Serial.println(ReadEEPresCalOffset(), 4);
+      }
     }
-    EEPROM.commit();
+
+    Serial.println(F("[WiFi] ---- Offsets persistence done ----\n"));
 
     Serial.print(F("[WiFi] Station persisted: "));
     Serial.println(stationName);
