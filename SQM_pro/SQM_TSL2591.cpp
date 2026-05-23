@@ -21,6 +21,20 @@
 
 #include "SQM_TSL2591.h"
 
+// ---------------------------------------------------------------------------
+// Optional dark-sky integration floor (v2.3.13)
+// ---------------------------------------------------------------------------
+// Pull the user-configurable minimum total integration time from Config.h
+// (only when this header is reachable from the SQM_pro sketch context).
+// In stand-alone use of this library the macro defaults to 0 (= disabled),
+// preserving the original gshau / Adafruit behaviour for downstream users.
+#if __has_include("Config.h")
+  #include "Config.h"
+#endif
+#ifndef TSL_MIN_TOTAL_INTEGRATION_MS
+  #define TSL_MIN_TOTAL_INTEGRATION_MS  0UL
+#endif
+
 SQM_TSL2591::SQM_TSL2591(int32_t sensorID) {
   _initialized       = false;
   _integration       = TSL2591_INTEGRATIONTIME_400MS;
@@ -237,7 +251,26 @@ void SQM_TSL2591::takeReading(void) {
         fullCumulative = full;
         irCumulative   = ir;
         visCumulative  = vis;
-        while ((float)visCumulative < 128.) {
+        // ------------------------------------------------------------------
+        // Dark-sky cumulative accumulation (v2.3.13)
+        // ------------------------------------------------------------------
+        // Original gshau loop stopped as soon as vis >= 128. For very dark
+        // skies (Bortle 1-2, mpsas > 21) this can leave the SNR rather low.
+        // Inspired by FreeDSM (UDC, GPL 3.0) which averages 6 samples (~6 s
+        // total integration), we now keep accumulating until BOTH :
+        //   (1) vis >= 128  (legacy signal-strength gate),  AND
+        //   (2) niter * 600 ms >= TSL_MIN_TOTAL_INTEGRATION_MS
+        //       (total cumulative integration floor, default 6 s).
+        // niter is hard-capped at 32 to bound worst-case readout time
+        // (32 * ~650 ms = ~21 s, still finite).
+        // Setting TSL_MIN_TOTAL_INTEGRATION_MS = 0 in Config.h reverts to
+        // the legacy behaviour (no floor).
+        // ------------------------------------------------------------------
+        while (true) {
+          bool signalOK   = ((float)visCumulative >= 128.);
+          bool floorOK    = (((uint32_t)niter * 600UL) >= (uint32_t)TSL_MIN_TOTAL_INTEGRATION_MS);
+          if (signalOK && floorOK) break;
+          if (niter >= 32) break;
           niter++;
           delay(50);
           lum  = getFullLuminosity();
@@ -247,7 +280,6 @@ void SQM_TSL2591::takeReading(void) {
           fullCumulative += full;
           irCumulative   += ir;
           visCumulative   = fullCumulative - irCumulative;
-          if (niter > 32) break;
         }
         if ((float)fullCumulative > (float)irCumulative) {
           full = fullCumulative;

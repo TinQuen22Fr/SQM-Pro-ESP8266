@@ -1,5 +1,9 @@
 # SQM Pro — Sky Quality Meter DIY pour ESP8266
 
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![Platform: ESP8266](https://img.shields.io/badge/Platform-ESP8266-orange.svg)](https://github.com/esp8266/Arduino)
+[![CI: GitHub Actions](https://img.shields.io/badge/CI-GitHub_Actions-2088FF.svg)](.github/workflows/build-firmware.yml)
+
 Firmware pour un **Sky Quality Meter (SQM) DIY** construit autour d'un
 ESP8266 (NodeMCU), d'un capteur de lumière TSL2591, d'un capteur météo
 BME280, d'un afficheur OLED 128×64 (SH1106 ou SSD1306) et d'un module

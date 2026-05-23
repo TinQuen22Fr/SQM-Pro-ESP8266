@@ -28,3 +28,7 @@ Desktop.ini
 # ===========================================================================
 SQM_pro/secrets.h
 secrets.h
+
+# FreeDSM source archive (download locally only — do NOT commit)
+docs/freedsm-reference/freedsm.v24.source/
+docs/freedsm-reference/*.zip

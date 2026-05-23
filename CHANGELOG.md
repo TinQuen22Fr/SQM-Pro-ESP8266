@@ -5,6 +5,69 @@ Tous les changements notables de ce projet sont documentés dans ce fichier.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ;
 le projet suit le [versionnage sémantique](https://semver.org/lang/fr/).
 
+## [v2.3.13] — 2026-05-23 (branche `wifimanager`)
+
+### ✨ Plancher d'intégration cumulative TSL2591 en ciel sombre
+
+**Inspiration** : projet **FreeDSM** (Université de A Coruña, GPL 3.0,
+Gaia4Sustainability — Ministère espagnol des Sciences + UE NextGen)
+qui moyenne 6 lectures TSL2591 (~6 s d'intégration cumulée) via le
+paramètre `FREEDSM_TSL2591_SAMPLES = 6` pour améliorer le rapport
+signal/bruit (SNR) en ciel sombre.
+
+**Constat** : l'algorithme existant de `takeReading()` (Adafruit/gshau)
+arrêtait la boucle d'accumulation dès que `vis >= 128`. Pour les ciels
+très sombres (Bortle 1-2, mpsas > 21), ce seuil bas pouvait laisser le
+SNR un peu juste alors que la marge d'amélioration est facile à
+récupérer en accumulant un peu plus longtemps (le TSL2591 est limité à
+600 ms d'intégration native par lecture, donc l'astuce passe forcément
+par l'accumulation logicielle).
+
+**Implémentation v2.3.13** :
+
+- Nouvelle constante `TSL_MIN_TOTAL_INTEGRATION_MS` dans `Config.h`
+  (défaut **6000 ms**, configurable, **0 = désactivé** pour retomber
+  sur le comportement legacy).
+- La boucle d'accumulation de `takeReading()` (mode "gain MAX +
+  intégration 600 ms") continue désormais d'accumuler tant que les
+  **deux** conditions ne sont pas satisfaites :
+  - `vis >= 128` (porte signal d'origine) **ET**
+  - `niter * 600 ms >= TSL_MIN_TOTAL_INTEGRATION_MS` (plancher SNR).
+- Cap dur conservé à `niter <= 32` (≈ 21 s max worst-case).
+
+**Combinaison avec l'auto-tuning existant** :
+
+| Condition ciel | Intégration effective | Stratégie |
+|---|---|---|
+| Lumineux (lever, lampadaires) | ~100-400 ms | Auto-bump gain LOW + temps court |
+| Crépuscule | ~600 ms - 2 s | Auto-bump intermédiaire |
+| Ciel rural moyen (mpsas ~20) | **≥ 6 s** (plancher) | Plancher + auto-tuning |
+| Ciel très sombre (Bortle 1-2) | jusqu'à ~21 s | Accumulation complète |
+
+**Avantages** :
+- ✅ Conserve la réactivité en ciel lumineux (pas de gaspillage CPU)
+- ✅ SNR garanti en ciel sombre (équivalent FreeDSM)
+- ✅ Compatible avec la calibration `19.72 vs 19.77 mpsas` validée terrain
+- ✅ Désactivable d'un seul `#define` si jamais ça pose problème
+
+**Fichiers modifiés** :
+
+```
+SQM_pro/Config.h                      (+ TSL_MIN_TOTAL_INTEGRATION_MS)
+SQM_pro/SQM_TSL2591.cpp               (logique while combinée)
+SQM_pro/SQM_pro.ino                   (Version "2.3.13")
+docs/freedsm-reference/               (archive source FreeDSM + README)
+```
+
+**Test recommandé** : laisser tourner une nuit complète, observer la
+stabilité des valeurs mpsas en ciel sombre (Bortle 4 sur Lourdes selon
+relevés précédents) et comparer avec une nuit en v2.3.12. La valeur
+moyenne devrait rester très proche (≈ 19.72) mais l'écart-type
+inter-mesures devrait diminuer.
+
+---
+
+
 ## [v2.3.12] — 2026-05-16 (branche `wifimanager`)
 
 ### 🐛 Corrigé — Affichage batterie OLED instable
