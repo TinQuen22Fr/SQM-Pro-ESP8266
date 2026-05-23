@@ -1,7 +1,20 @@
 // Config.h
 // User specific configuration for SQM
 //
-// Copyright (c) 2025 Quentin Dumont
+// Copyright (c) 2025-2026 Quentin Dumont
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // Adapted to send data to the SQM Nightwatch backend
 // (magnitude-tracker) at https://sqm.quentin-astro.fr
@@ -341,6 +354,31 @@ const char* ota_password = OTA_PASSWORD;
 #define DIY_DARK_CAL_OFFSET       0.00f    // mags/arcsec^2 - DIY has no dark sensor (0)
 #define DIY_DARK_CAL_TEMP_FROM_BME280      // when defined: dark cal temp = current BME280 reading
 //#define DIY_DARK_CAL_TEMP     20.9f      // alternative: hard-coded value (uncomment + comment above)
+
+// -----------------------------------------------------------------------------
+// TSL2591 — Plancher d'intégration cumulative en ciel sombre (v2.2.17)
+// -----------------------------------------------------------------------------
+// Inspiré du projet FreeDSM (Université de A Coruña, GPL 3.0, Gaia4Sustainability)
+// qui moyenne 6 lectures (~6 s d'intégration cumulée) pour améliorer le SNR
+// en ciel sombre :
+//   #define FREEDSM_TSL2591_SAMPLES 6   (cf. freedsmfw/tasmota/user_config_override.h)
+//
+// Notre implémentation conserve l'auto-tuning gain+time existant mais ajoute
+// un PLANCHER d'accumulation cumulative en condition "ciel sombre" (gain MAX +
+// intégration 600 ms). takeReading() continue d'accumuler des lectures jusqu'à
+// ce que niter * 600 ms >= TSL_MIN_TOTAL_INTEGRATION_MS, même si vis >= 128.
+//
+// Avantages :
+//   - En ciel lumineux  : on garde la réactivité (auto-bump gain bas / temps court)
+//   - En ciel sombre    : SNR garanti par accumulation minimale (comme FreeDSM)
+//   - En ciel très sombre (Bortle 1-2, mpsas > 21) : l'accumulation continue
+//     au-delà des 6 s jusqu'à ce que le seuil vis >= 128 soit franchi
+//     (logique d'origine du driver gshau, plafonnée à niter <= 32)
+//
+// Mettre à 0 pour DÉSACTIVER le plancher et revenir au comportement legacy
+// (auto-tuning seul, sans plancher cumulatif).
+//
+#define TSL_MIN_TOTAL_INTEGRATION_MS  6000UL  // 6000 ms (6 s) recommandé
 
 // -----------------------------------------------------------------------------
 // Compile-time consistency: deep-sleep and OTA cannot coexist.

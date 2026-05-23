@@ -5,6 +5,88 @@ Tous les changements notables de ce projet sont documentés dans ce fichier.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ;
 le projet suit le [versionnage sémantique](https://semver.org/lang/fr/).
 
+## [v2.2.17] — 2026-05-23
+
+### ✨ Plancher d'intégration cumulative TSL2591 en ciel sombre
+
+**Inspiration** : projet **FreeDSM** (Université de A Coruña, GPL 3.0,
+Gaia4Sustainability — Ministère espagnol des Sciences + UE NextGen)
+qui moyenne 6 lectures TSL2591 (~6 s d'intégration cumulée) via le
+paramètre `FREEDSM_TSL2591_SAMPLES = 6` pour améliorer le rapport
+signal/bruit (SNR) en ciel sombre.
+
+**Précision technique** : le **SQM-LU officiel** d'Unihedron utilise un
+capteur **TSL237** (sortie fréquence, comptage d'impulsions) avec une
+fenêtre typique de **~300 ms** par lecture. Notre **TSL2591** (ADC, 600 ms
+max natif) accumulé sur 6 secondes intègre **~20× plus de signal** que
+l'officiel à 300 ms — ce qui est *meilleur* en SNR ciel sombre.
+L'offset de calibration ramène ensuite à la même valeur mpsas, comme
+validé sur le terrain : **19.72 vs 19.77 mpsas** sur le même site.
+
+**Constat** : l'algorithme existant de `takeReading()` (Adafruit/gshau)
+arrêtait la boucle d'accumulation dès que `vis >= 128`. Pour les ciels
+très sombres (Bortle 1-2, mpsas > 21), ce seuil bas pouvait laisser le
+SNR un peu juste alors que la marge d'amélioration est facile à
+récupérer en accumulant un peu plus longtemps.
+
+**Implémentation v2.2.17** :
+
+- Nouvelle constante `TSL_MIN_TOTAL_INTEGRATION_MS` dans `Config.h`
+  (défaut **6000 ms**, configurable, **0 = désactivé** pour retomber
+  sur le comportement legacy).
+- La boucle d'accumulation de `takeReading()` (mode "gain MAX +
+  intégration 600 ms") continue désormais d'accumuler tant que les
+  **deux** conditions ne sont pas satisfaites :
+  - `vis >= 128` (porte signal d'origine) **ET**
+  - `niter * 600 ms >= TSL_MIN_TOTAL_INTEGRATION_MS` (plancher SNR).
+- Cap dur conservé à `niter <= 32` (≈ 21 s max worst-case).
+
+**Combinaison avec l'auto-tuning existant** :
+
+| Condition ciel | Intégration effective | Stratégie |
+|---|---|---|
+| Lumineux (lever, lampadaires) | ~100-400 ms | Auto-bump gain LOW + temps court |
+| Crépuscule | ~600 ms - 2 s | Auto-bump intermédiaire |
+| Ciel rural moyen (mpsas ~20) | **≥ 6 s** (plancher) | Plancher + auto-tuning |
+| Ciel très sombre (Bortle 1-2) | jusqu'à ~21 s | Accumulation complète |
+
+**Avantages** :
+- ✅ Conserve la réactivité en ciel lumineux (pas de gaspillage CPU)
+- ✅ SNR garanti en ciel sombre (équivalent FreeDSM, supérieur SQM-LU)
+- ✅ Compatible avec la calibration `19.72 vs 19.77 mpsas` validée terrain
+- ✅ Désactivable d'un seul `#define` si jamais ça pose problème
+
+### 📜 Migration explicite licence GPL v3
+
+- `LICENSE` : texte officiel complet GPL v3 (placeholder remplacé)
+- `README.md` : ajout badge License GPL v3
+- En-têtes GPL v3 standard ajoutés aux 8 fichiers source rédigés par
+  Quentin Dumont (`Config.h`, `EEPROM.ino`, `GPS.ino`, `MyLib.ino`,
+  `OTA.ino`, `Setup.h`, `Validate.h`, `WiFi.ino`).
+- Licence **BSD** Adafruit / gshau **préservée** dans `SQM_TSL2591.h` /
+  `SQM_TSL2591.cpp` (obligation légale ; BSD est compatible GPL v3).
+
+**Fichiers modifiés** :
+
+```
+LICENSE                               (placeholder -> GPL v3 complet)
+README.md                             (badges + section licence)
+SQM_pro/Config.h                      (+ TSL_MIN_TOTAL_INTEGRATION_MS)
+SQM_pro/SQM_TSL2591.cpp               (logique while combinée)
+SQM_pro/{Config.h, EEPROM.ino, ...}   (en-têtes GPL v3)
+.gitignore                            (exclusion archive FreeDSM)
+docs/freedsm-reference/               (archive documentaire FreeDSM)
+```
+
+**Test recommandé** : laisser tourner une nuit complète, observer la
+stabilité des valeurs mpsas en ciel sombre (Bortle 4 sur Lourdes selon
+relevés précédents) et comparer avec une nuit en v2.2.16. La valeur
+moyenne devrait rester très proche (≈ 19.72) mais l'écart-type
+inter-mesures devrait diminuer.
+
+---
+
+
 ## [v2.2.16] — 2026-05-16
 
 ### 🐛 Corrigé — Affichage batterie OLED instable
