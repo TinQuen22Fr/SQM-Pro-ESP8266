@@ -140,9 +140,12 @@ void wifi_main(double mpsas, double dmpsas, int temp, byte hum, int pres) {
 #endif
 
   String url;
-  // Calibrated battery readout (helper defined in MyLib.ino)
-  float battery = readBatteryVoltage();
-  byte  battPct = getBatteryPercentSmoothed(battery);
+  // Calibrated battery readout (cached since v2.3.12). Using the cache means
+  // the value reported to the API is consistent with what's shown on the
+  // OLED at the same moment (no double sampling jitter).
+  batteryRefreshIfDue();  // ensure at least one read happened
+  float battery = getCachedBatteryVoltage();
+  byte  battPct = getCachedBatteryPercent();
 
   // Compute lux from the TSL2591 raw channels (optional extra field "L").
   float lux = 0.0f;

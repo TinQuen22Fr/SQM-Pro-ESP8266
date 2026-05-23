@@ -5,6 +5,67 @@ Tous les changements notables de ce projet sont documentés dans ce fichier.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ;
 le projet suit le [versionnage sémantique](https://semver.org/lang/fr/).
 
+## [v2.3.12] — 2026-05-16 (branche `wifimanager`)
+
+### 🐛 Corrigé — Affichage batterie OLED instable
+
+**Backport** du fix `v2.2.16` de la branche `main` vers `wifimanager`.
+
+**Constat utilisateur** : la jauge batterie sautillait trop entre deux
+mesures successives sur l'OLED. Cause matérielle (pont 100k+100k + bruit
+HF MT3608) à corriger côté hardware, mais on peut déjà stabiliser
+l'affichage côté firmware.
+
+**Fix v2.3.12** : ajout d'un **cache temporel** sur la lecture batterie.
+La fonction `batteryRefreshIfDue()` ne fait une nouvelle mesure que si
+**`BATTERY_DISPLAY_INTERVAL_MS`** est écoulé depuis la précédente
+(default = **5000 ms = 5 s**). Entre deux refreshs, l'OLED affiche la
+même valeur stable.
+
+### ✨ Nouvelle API publique (MyLib.ino)
+
+```cpp
+bool  batteryRefreshIfDue();        // true si refresh effectif
+float getCachedBatteryVoltage();    // last cached V
+byte  getCachedBatteryPercent();    // last cached %
+float getCachedBatteryRawAvg();     // last cached raw ADC average
+```
+
+### 📊 Avant / Après
+
+| Aspect | v2.3.11 | v2.3.12 |
+|---|---|---|
+| Lecture A0 / seconde | 5-15× | **1× toutes 5 s** |
+| Trace `[BAT]` série | Chaque cycle | **Une fois par refresh** |
+| Stabilité OLED V/% | Sautille | **Stable** ✅ |
+| OLED ↔ push API | Décorrélés | **Identiques** ✅ |
+
+### ⚙️ Configurable
+
+```cpp
+// Config.h
+#define BATTERY_DISPLAY_INTERVAL_MS  5000UL  // 5 s par défaut
+```
+
+- **2000-3000** : réaction rapide (debug branchement/débranchement)
+- **5000** ✅ default
+- **10000-30000** : stabilité max, deep-sleep-friendly
+
+### Note hardware (à traiter ultérieurement par l'utilisateur)
+
+Le pont diviseur 100k+100k actuel sur A0 amène du bruit lié à l'impédance
+source élevée. Le condo **100 nF céramique** entre A0 et GND, ou un
+filtre RC, restent les vraies solutions. Le cache logiciel masque
+visuellement le problème sans le résoudre fondamentalement.
+
+### Fichiers modifiés
+- `SQM_pro.ino` : bump version → `2.3.12`
+- `SQM_pro/Config.h` : `BATTERY_DISPLAY_INTERVAL_MS`
+- `SQM_pro/MyLib.ino` : cache + getters + DisplWait refactor
+- `SQM_pro/WiFi.ino` : push utilise getters cachés
+
+---
+
 ## [v2.2.14] — 2026-05-08
 
 ### 🆕 Calcul Hz "équivalent SQM-LU" dans `rx`/`ux`/`U1x`

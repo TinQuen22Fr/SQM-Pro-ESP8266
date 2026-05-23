@@ -125,6 +125,56 @@ float readBatteryRawAvg() {
 }
 
 // -----------------------------------------------------------------------------
+// Time-throttled battery cache (v2.3.12, backport of main-branch v2.2.16)
+// -----------------------------------------------------------------------------
+// The main loop runs at a few Hz, which made the OLED battery display flicker
+// between successive readings (high source impedance + MT3608 switching
+// noise). To stabilize the display we only re-sample the battery every
+// BATTERY_DISPLAY_INTERVAL_MS (default 5 s).
+//   batteryRefreshIfDue() -> returns true if a fresh sample was taken now
+//   getCachedBatteryVoltage()
+//   getCachedBatteryPercent()
+//   getCachedBatteryRawAvg()
+// -----------------------------------------------------------------------------
+static unsigned long _bat_last_update_ms = 0;
+static float _bat_cached_vbat   = -1.0f;
+static byte  _bat_cached_pcent  = 255;
+static float _bat_cached_rawavg = 0.0f;
+
+bool batteryRefreshIfDue() {
+  unsigned long now = millis();
+  bool firstCall = (_bat_cached_vbat < 0.0f);
+  bool intervalElapsed = (now - _bat_last_update_ms) >= BATTERY_DISPLAY_INTERVAL_MS;
+  bool millisRolled = (now < _bat_last_update_ms);
+  if (firstCall || intervalElapsed || millisRolled) {
+    long sum = 0;
+    for (int i = 0; i < BATTERY_OVERSAMPLES; i++) {
+      sum += analogRead(A0);
+      delay(2);
+    }
+    _bat_cached_rawavg = (float)sum / (float)BATTERY_OVERSAMPLES;
+    _bat_cached_vbat   = _bat_cached_rawavg * BATTERY_VOLTS_PER_RAW;
+    _bat_cached_pcent  = getBatteryPercentSmoothed(_bat_cached_vbat);
+    _bat_last_update_ms = now;
+    return true;
+  }
+  return false;
+}
+
+float getCachedBatteryVoltage() {
+  if (_bat_cached_vbat < 0) batteryRefreshIfDue();
+  return _bat_cached_vbat;
+}
+byte getCachedBatteryPercent() {
+  if (_bat_cached_pcent == 255) batteryRefreshIfDue();
+  return _bat_cached_pcent;
+}
+float getCachedBatteryRawAvg() {
+  if (_bat_cached_vbat < 0) batteryRefreshIfDue();
+  return _bat_cached_rawavg;
+}
+
+// -----------------------------------------------------------------------------
 // SQM "equivalent Hz" computation (v2.2.14)
 // -----------------------------------------------------------------------------
 // The Unihedron SQM-LU uses a TSL237 light-to-frequency sensor and reports
@@ -354,19 +404,24 @@ void DisplWait(char blk) {
   _blk_change_status();
 
   // -------------------------------------------------------------------------
-  // Battery readout (calibrated, oversampled)
+  // Battery readout (calibrated, oversampled, time-cached since v2.3.12)
   // Format: "Bat: X.XXV (YY%)" or warning/critical icon if low.
-  // Raw ADC value is printed on Serial ONLY in WiFi mode (when ModePin is
-  // HIGH). In USB/Unihedron mode the Serial line is reserved for the protocol
-  // (any debug print would corrupt UDM responses -- caused total handshake
-  // failure in v2.2.8, fixed in v2.2.9).
+  //
+  // Time-throttled cache (BATTERY_DISPLAY_INTERVAL_MS, default 5 s) :
+  // successive DisplWait() calls within the interval reuse the previous
+  // reading -> stable OLED display, reduces ADC noise visibility on the
+  // high-impedance 100k+100k divider.
+  //
+  // [BAT] serial trace emitted only on actual refresh (~every 5 s), in
+  // WiFi mode only (USB mode reserves Serial for Unihedron protocol --
+  // fixed in v2.2.9, propagated here).
   // -------------------------------------------------------------------------
-  float vbat   = readBatteryVoltage();
-  byte  pcent  = getBatteryPercentSmoothed(vbat);
-  if (digitalRead(ModePin)) {  // HIGH = WiFi/normal mode -> debug allowed
-    float rawAvg = readBatteryRawAvg();
+  bool batRefreshed = batteryRefreshIfDue();
+  float vbat   = getCachedBatteryVoltage();
+  byte  pcent  = getCachedBatteryPercent();
+  if (batRefreshed && digitalRead(ModePin)) {
     Serial.print("[BAT] raw_avg=");
-    Serial.print(rawAvg, 2);
+    Serial.print(getCachedBatteryRawAvg(), 2);
     Serial.print("  V=");
     Serial.print(vbat, 3);
     Serial.print("  pct=");

@@ -285,6 +285,13 @@ const char* ota_password = OTA_PASSWORD;
 // dividers; ESP8266 ADC is only 10-bit and rather noisy by itself).
 #define BATTERY_OVERSAMPLES     8
 
+// How often (in milliseconds) the battery readout is refreshed on the OLED
+// display and on the [BAT] serial trace (introduced in v2.3.12, backport of
+// the main-branch v2.2.16 cache mechanism). Decoupled from the main loop
+// rate so the value doesn't bounce around between successive sensor cycles.
+// 5000 ms (5 s) = good balance jitter/réactivité.
+#define BATTERY_DISPLAY_INTERVAL_MS  5000UL
+
 // -----------------------------------------------------------------------------
 // Battery percent curve selector
 // -----------------------------------------------------------------------------
