@@ -5,6 +5,98 @@ Tous les changements notables de ce projet sont documentés dans ce fichier.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ;
 le projet suit le [versionnage sémantique](https://semver.org/lang/fr/).
 
+## [v2.2.16] — 2026-05-16
+
+### 🐛 Corrigé — Affichage batterie OLED instable
+
+**Constat utilisateur** : la jauge batterie sautillait trop entre deux
+mesures successives affichées sur l'OLED — le pourcentage et la tension
+oscillaient visuellement à chaque cycle de boucle principale (~2-5 Hz).
+
+**Cause** : `DisplWait()` réappelait `readBatteryVoltage()` (8 oversamples)
+à chaque appel, et l'ADC ESP8266 sur pont diviseur 100k+100k est bruité
+malgré l'oversampling. Aux fluctuations naturelles s'ajoutait le bruit
+HF du MT3608 (1.2 MHz switching). Au final, le `%` lissé hystérésis ±2%
+suffisait pas à masquer la jitter.
+
+**Fix v2.2.16** : ajout d'un **cache temporel** sur la lecture batterie.
+La fonction `batteryRefreshIfDue()` ne fait une nouvelle mesure que si
+**`BATTERY_DISPLAY_INTERVAL_MS`** est écoulé depuis la précédente
+(default = **5000 ms = 5 s**). Entre deux refreshs, l'OLED affiche la
+même valeur stable.
+
+### ✨ Nouvelle API publique (MyLib.ino)
+
+```cpp
+bool  batteryRefreshIfDue();        // true if a fresh read was just taken
+float getCachedBatteryVoltage();    // last cached V
+byte  getCachedBatteryPercent();    // last cached %
+float getCachedBatteryRawAvg();     // last cached raw ADC average
+```
+
+### 📊 Avant / Après
+
+| Aspect | v2.2.15 | v2.2.16 |
+|---|---|---|
+| Lecture A0 par seconde | 5-15× | **1× toutes les 5s** |
+| `[BAT]` trace série | Chaque cycle | **À chaque refresh seulement** |
+| Stabilité OLED V/% | Sautille | **Stable** ✅ |
+| Cohérence OLED ↔ API push | Décorrélée | **Identique** ✅ |
+
+### ⚙️ Configuration ajustable
+
+```cpp
+#define BATTERY_DISPLAY_INTERVAL_MS  5000UL  // 5 sec default
+```
+
+- **2000-3000** : réaction rapide au branchement/débranchement (debug)
+- **5000** ✅ default : compromis confort/réactivité
+- **10000-30000** : maximum stabilité, deep-sleep-friendly
+
+### Fichiers modifiés
+- `SQM_pro/Config.h` : `BATTERY_DISPLAY_INTERVAL_MS` (nouveau)
+- `SQM_pro/MyLib.ino` : cache + getters publics + DisplWait refactor
+- `SQM_pro/WiFi.ino` : push utilise getters cachés
+
+---
+
+## [v2.2.15] — 2026-05-16
+
+### 🐛 Corrigé — Build CI échouait sur arduino-cli
+
+Le workflow GitHub Actions (ajouté par l'utilisateur en parallèle) plantait
+avec :
+```
+SQM_pro.ino: error: 'g_lat' was not declared in this scope
+SQM_pro.ino: error: 'g_lng' was not declared in this scope
+SQM_pro.ino: error: 'GPS_sync' was not declared in this scope
+```
+
+**Cause** : mes references aux variables GPS (`g_lat`, `g_lng`, `g_hour`,
+`g_sat`, `GPS_sync`, etc.) ajoutées en v2.2.13 dans le handler `g0x` sont
+définies dans `GPS.ino`. L'Arduino IDE GUI concatène les `.ino` et auto-
+résout, mais **arduino-cli** ne génère des prototypes que pour les
+**fonctions**, pas pour les **variables** → erreur de compilation.
+
+**Fix** : ajout des déclarations `extern` dans `Setup.h` (inclus partout) :
+```cpp
+#ifdef GPS_ON
+extern bool   GPS_sync;
+extern byte   g_sat;
+extern byte   g_hour, g_minute, g_second;
+extern double g_lat, g_lng;
+// ... etc
+#endif
+```
+
+Workflow CI build #7 : ✅ SUCCESS — `sqm-pro-esp8266.bin` (463 776 octets)
+attaché à la release v2.2.15.
+
+### Fichiers modifiés
+- `SQM_pro/Setup.h` : extern declarations GPS
+
+---
+
 ## [v2.2.14] — 2026-05-08
 
 ### 🆕 Calcul Hz "équivalent SQM-LU" dans `rx`/`ux`/`U1x`
