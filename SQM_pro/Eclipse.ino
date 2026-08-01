@@ -62,6 +62,23 @@
 #include <ESP8266WebServer.h>
 
 // -----------------------------------------------------------------------------
+// Forward declarations pour les fonctions de persistance EEPROM définies
+// dans EEPROM.ino. Arduino IDE / arduino-cli génèrent des prototypes
+// automatiques mais peuvent parfois manquer les fonctions cross-.ino
+// conditionnées par un #ifdef. Ces prototypes explicites garantissent
+// que le compilateur trouve la référence à Read/WriteEEEclipseConfig().
+// -----------------------------------------------------------------------------
+bool ReadEEEclipseConfig(bool* outMode, uint16_t* outCadenceS,
+                        bool* outShouldLog, bool* outShouldSend);
+void WriteEEEclipseConfig(bool mode, uint16_t cadenceS,
+                         bool shouldLog, bool shouldSend);
+
+// Forward declarations locales à ce module (utilisées par les endpoints web
+// définis via lambdas plus bas dans le fichier).
+static void eclipse_writeCsvHeader(File& f);
+static void eclipse_checkFsSpace();
+
+// -----------------------------------------------------------------------------
 // Configuration
 // -----------------------------------------------------------------------------
 #ifndef ECLIPSE_CSV_PATH
@@ -111,13 +128,19 @@ static uint16_t          eclipseUnsyncedLines = 0;
 // timestamp vide dans le CSV.
 static String eclipse_buildTimestamp() {
 #ifdef GPS_ON
-  extern uint16_t g_year;
-  extern uint8_t  g_month, g_day, g_hour, g_min, g_sec;
-  extern uint8_t  g_sat;
+  // Types alignés sur les vraies déclarations dans GPS.ino :
+  //   int   g_year;
+  //   byte  g_month, g_day, g_hour, g_minute, g_second;
+  //   byte  g_sat;
+  // (byte est un alias de uint8_t sur ESP8266/AVR)
+  extern int  g_year;
+  extern byte g_month, g_day, g_hour, g_minute, g_second;
+  extern byte g_sat;
   if (g_sat >= 3 && g_year >= 2020) {
     char buf[24];
-    snprintf(buf, sizeof(buf), "%04u-%02u-%02uT%02u:%02u:%02uZ",
-             g_year, g_month, g_day, g_hour, g_min, g_sec);
+    snprintf(buf, sizeof(buf), "%04d-%02u-%02uT%02u:%02u:%02uZ",
+             (int)g_year, (unsigned)g_month, (unsigned)g_day,
+             (unsigned)g_hour, (unsigned)g_minute, (unsigned)g_second);
     return String(buf);
   }
 #endif
