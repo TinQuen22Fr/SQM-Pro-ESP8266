@@ -361,6 +361,28 @@ const char* ota_password = OTA_PASSWORD;
 //#define DIY_DARK_CAL_TEMP     20.9f      // alternative: hard-coded value (uncomment + comment above)
 
 // -----------------------------------------------------------------------------
+// Mode Éclipse (v2.3.14-eclipse) — événement astronomique du 12 août 2026
+// -----------------------------------------------------------------------------
+// Active la compilation du module `Eclipse.ino` qui :
+//   * Enregistre localement chaque mesure dans /eclipse.csv (LittleFS)
+//   * Ajoute un tag `&mode=eclipse` à l'URL de push HTTPS magnitude-tracker
+//   * Expose 3 endpoints HTTP de récupération du CSV (/eclipse-log,
+//     /eclipse-status, /eclipse-clear) sur le port 80 pendant que le mode
+//     est actif
+//   * Ajoute une commande série UDM `El` pour dumper le CSV
+//
+// L'activation runtime (ON/OFF) se fait via le portail captif (double reset
+// puis case à cocher). Ce macro compile juste le code — le mode reste OFF
+// tant que l'utilisateur n'a rien coché dans le portail.
+//
+// Coût flash approximatif : +25 kB (LittleFS + WebServer + logique CSV).
+// Nécessite libs déjà incluses dans le core ESP8266 Arduino 3.x.
+//
+// Pour compiler SANS le mode éclipse (production hors événement) : commenter
+// la ligne ci-dessous.
+#define ECLIPSE_MODE_ON
+
+// -----------------------------------------------------------------------------
 // TSL2591 — Plancher d'intégration cumulative en ciel sombre (v2.3.13)
 // -----------------------------------------------------------------------------
 // Inspiré du projet FreeDSM (Université de A Coruña, GPL 3.0, Gaia4Sustainability)

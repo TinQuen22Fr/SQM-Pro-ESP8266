@@ -202,6 +202,17 @@ void wifi_main(double mpsas, double dmpsas, int temp, byte hum, int pres) {
     url += "&Lon="; url += String(g_lng, 6);
   }
 #endif
+#ifdef ECLIPSE_MODE_ON
+  // v2.3.14-eclipse : tag la mesure comme "éclipse" côté backend, ce qui
+  // permet à magnitude-tracker de :
+  //   - stocker à cadence haute sans regrouper avec les données normales
+  //   - afficher un timeline dédié pour l'événement
+  //   - ignorer le filtre "night-only" côté serveur (mesures diurnes)
+  extern bool eclipse_isActive();
+  if (eclipse_isActive()) {
+    url += "&mode=eclipse";
+  }
+#endif
   send_cloud(url);
 }
 

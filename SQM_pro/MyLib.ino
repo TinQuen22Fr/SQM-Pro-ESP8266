@@ -468,4 +468,17 @@ void DisplWait(char blk) {
     OledDisp.print("Not connect!    ");
   }
 #endif
+#ifdef ECLIPSE_MODE_ON
+  // v2.3.14-eclipse — indicateur discret en bas de l'écran quand le mode
+  // éclipse est actif. Affiche "ECL:<nombre_lignes>" pour que l'utilisateur
+  // voie en un coup d'œil que l'enregistrement local tourne.
+  extern bool eclipse_isActive();
+  extern uint32_t gEclipseLineCount;
+  if (eclipse_isActive()) {
+    OledDisp.setCursor(0, 7);
+    OledDisp.print("ECL:");
+    OledDisp.print(gEclipseLineCount);
+    OledDisp.print("      ");  // efface les eventuels chiffres restants
+  }
+#endif
 }

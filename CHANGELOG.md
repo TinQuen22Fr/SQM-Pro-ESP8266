@@ -5,6 +5,86 @@ Tous les changements notables de ce projet sont documentés dans ce fichier.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ;
 le projet suit le [versionnage sémantique](https://semver.org/lang/fr/).
 
+## [v2.3.14-eclipse] — 2026-06-14 (branche `wifimanager_eclipse_mode`)
+
+### 🌒 Nouveau : Mode Éclipse pour événement astronomique du 12 août 2026
+
+Cette version, dérivée de `wifimanager` v2.3.13, ajoute un **mode de mesure
+haute cadence** avec **enregistrement local persistant** dédié à l'éclipse
+solaire partielle du **12 août 2026** (visible en Europe du Sud, avec ~98-99 %
+d'obscuration pour certains sites).
+
+Le mode reste **OFF par défaut** — aucune modification de comportement en
+utilisation normale. Il s'active manuellement via le portail captif (double
+reset), le firmware retourne à son comportement standard une fois désactivé.
+
+### ✨ Fonctionnalités ajoutées
+
+**Enregistrement local (LittleFS)**
+- Chaque mesure est écrite dans `/eclipse.csv` (flash NOR non-volatile)
+- Fichier crash-safe (survit à coupure de courant, batterie déchargée, reboot)
+- Colonnes : `timestamp, session_id, seconds_since_boot, mpsas, dmpsas, lux,
+  ir_raw, full_raw, temperature_c, humidity_pct, pressure_hpa, battery_v`
+- Fsync forcé tous les 5 enregistrements (au pire 5 mesures perdues en cas
+  de crash matériel)
+- Timestamp ISO 8601 via GPS si disponible, sinon `T+<secondes_depuis_boot>`
+- Auto-arrêt d'écriture si LittleFS < 8 kB libres (garde-fou)
+
+**Cadence configurable**
+- Défaut : 10 s ; plage : 5 s à 60 s
+- Cadence pilotée par `eclipse_shouldMeasureNow()` (non-bloquant)
+
+**Push cloud parallèle (best-effort)**
+- Si `ShouldSend = ON` et WiFi connecté, la mesure part aussi vers
+  `magnitude-tracker` avec le tag `&mode=eclipse` ajouté à l'URL
+- Si le WiFi tombe : le CSV local continue tranquillement, aucun blocage
+
+**3 chemins de récupération des données**
+1. **HTTP local** : `GET http://<ip-sonde>/eclipse-log` (téléchargement CSV
+   directement dans le navigateur, header `Content-Disposition` propre)
+2. **Commande UDM série** : `El` (dump du CSV via port série USB)
+3. **Portail captif** : status disponible via `GET /eclipse-status` (JSON)
+   et effacement contrôlé via `GET /eclipse-clear?confirm=YES` (double
+   confirmation obligatoire)
+
+**Indicateur OLED discret**
+- Ligne 7 : `ECL:<nombre_lignes>` visible en mode éclipse actif uniquement
+- Reste transparent sur les autres lignes d'affichage habituelles
+
+**Persistance EEPROM** (5 bytes, offset 180-185)
+- Marker `'E'` + 4 champs : `mode`, `cadence_s`, `should_log`, `should_send`
+- Lecture au boot par `ReadEEEclipseConfig()`, écriture par le portail captif
+  via `WriteEEEclipseConfig()`
+
+### 🔒 Garanties de persistance
+
+- LittleFS = flash NOR non-volatile → survit coupure courant, reboot, batterie
+- Design crash-safe LittleFS (contrairement à SPIFFS obsolète)
+- ⚠️ Un OTA firmware update peut effacer LittleFS si les partitions changent
+  → **NE PAS faire d'OTA entre l'événement et la récupération du CSV**
+- ⚠️ Un reflash USB avec "Erase All" efface tout → **NE PAS reflasher via USB**
+  avant récupération
+
+### 📁 Fichiers modifiés
+
+```
+SQM_pro/Eclipse.ino          (NOUVEAU, ~360 lignes)
+SQM_pro/Config.h             (+ #define ECLIPSE_MODE_ON)
+SQM_pro/EEPROM.ino           (+ ReadEEEclipseConfig / WriteEEEclipseConfig)
+SQM_pro/WiFiPortal.ino       (+ 4 champs UI + capture + persist)
+SQM_pro/WiFi.ino             (+ tag &mode=eclipse dans URL)
+SQM_pro/MyLib.ino            (+ indicateur OLED "ECL:")
+SQM_pro/SQM_pro.ino          (+ hook setup/loop + commandes UDM El/Es)
+```
+
+### 🧪 Procédure de test recommandée
+
+Voir `DEPLOY.md` section "Mode Éclipse — Procédure d'utilisation" pour la
+checklist complète J-7 → J+1.
+
+---
+
+
 ## [v2.3.13] — 2026-05-23 (branche `wifimanager`)
 
 ### ✨ Plancher d'intégration cumulative TSL2591 en ciel sombre

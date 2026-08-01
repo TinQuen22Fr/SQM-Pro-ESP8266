@@ -217,6 +217,43 @@ static bool runConfigPortal(char* stationName, size_t stationNameSize,
   wm.addParameter(&customHumOffset);
   wm.addParameter(&customPresOffset);
 
+#ifdef ECLIPSE_MODE_ON
+  // v2.3.14-eclipse — 4 champs pour le mode éclipse
+  extern bool     gEclipseMode;
+  extern uint16_t gEclipseCadenceS;
+  extern bool     gEclipseShouldLog;
+  extern bool     gEclipseShouldSend;
+  char eclModeBuf[2]     = { gEclipseMode ? '1' : '0', '\0' };
+  char eclCadenceBuf[6];
+  snprintf(eclCadenceBuf, sizeof(eclCadenceBuf), "%u", gEclipseCadenceS);
+  char eclLogBuf[2]      = { gEclipseShouldLog  ? '1' : '0', '\0' };
+  char eclSendBuf[2]     = { gEclipseShouldSend ? '1' : '0', '\0' };
+  WiFiManagerParameter customEclipseMode(
+    "eclipse_mode",
+    "Mode Eclipse actif ? (1=oui, 0=non - defaut 0)",
+    eclModeBuf, 2
+  );
+  WiFiManagerParameter customEclipseCadence(
+    "eclipse_cadence",
+    "Eclipse cadence (sec, 5-60, defaut 10)",
+    eclCadenceBuf, 4
+  );
+  WiFiManagerParameter customEclipseShouldLog(
+    "eclipse_log",
+    "Eclipse : log local CSV ? (1=oui, 0=non)",
+    eclLogBuf, 2
+  );
+  WiFiManagerParameter customEclipseShouldSend(
+    "eclipse_send",
+    "Eclipse : push cloud aussi ? (1=oui, 0=non)",
+    eclSendBuf, 2
+  );
+  wm.addParameter(&customEclipseMode);
+  wm.addParameter(&customEclipseCadence);
+  wm.addParameter(&customEclipseShouldLog);
+  wm.addParameter(&customEclipseShouldSend);
+#endif
+
   wm.setTitle("SQM Pro - Configuration");
   wm.setClass("invert");
   wm.setConfigPortalTimeout(WIFI_PORTAL_TIMEOUT);
@@ -234,6 +271,9 @@ static bool runConfigPortal(char* stationName, size_t stationNameSize,
   // locaux) pour éviter tout problème de durée de vie.
   String capStationName, capAltSsid, capAltPass;
   String capNightOnly, capSqmOff, capTempOff, capHumOff, capPresOff;
+#ifdef ECLIPSE_MODE_ON
+  String capEclMode, capEclCadence, capEclLog, capEclSend;
+#endif
   bool   callbackFired = false;
 
   wm.setSaveParamsCallback([&]() {
@@ -259,6 +299,12 @@ static bool runConfigPortal(char* stationName, size_t stationNameSize,
     capTempOff     = pickArg("temp_offset",  customTempOffset.getValue());
     capHumOff      = pickArg("hum_offset",   customHumOffset.getValue());
     capPresOff     = pickArg("pres_offset",  customPresOffset.getValue());
+#ifdef ECLIPSE_MODE_ON
+    capEclMode     = pickArg("eclipse_mode",    customEclipseMode.getValue());
+    capEclCadence  = pickArg("eclipse_cadence", customEclipseCadence.getValue());
+    capEclLog      = pickArg("eclipse_log",     customEclipseShouldLog.getValue());
+    capEclSend     = pickArg("eclipse_send",    customEclipseShouldSend.getValue());
+#endif
 
     Serial.println(F("\n[WiFi] setSaveParamsCallback() FIRED ----"));
     Serial.print(F("[WiFi]   station='"));   Serial.print(capStationName); Serial.println("'");
@@ -470,6 +516,49 @@ static bool runConfigPortal(char* stationName, size_t stationNameSize,
     }
 
     Serial.println(F("[WiFi] ---- Offsets persistence done ----\n"));
+
+#ifdef ECLIPSE_MODE_ON
+    // ------------------------------------------------------------------------
+    // v2.3.14-eclipse — Persistance de la config Éclipse
+    // ------------------------------------------------------------------------
+    // On accepte toutes les combinaisons ; les bornes sont clampées au boot
+    // par eclipse_setup(). En cas de valeur vide (utilisateur n'a pas touché
+    // le champ), on conserve la valeur actuelle en RAM.
+    {
+      extern bool     gEclipseMode;
+      extern uint16_t gEclipseCadenceS;
+      extern bool     gEclipseShouldLog;
+      extern bool     gEclipseShouldSend;
+
+      Serial.println(F("[WiFi] ---- Eclipse config ----"));
+      if (capEclMode.length() > 0) {
+        gEclipseMode = (capEclMode[0] != '0');
+      }
+      if (capEclCadence.length() > 0) {
+        long v = capEclCadence.toInt();
+        if (v >= 5 && v <= 60) {
+          gEclipseCadenceS = (uint16_t)v;
+        }
+      }
+      if (capEclLog.length() > 0) {
+        gEclipseShouldLog = (capEclLog[0] != '0');
+      }
+      if (capEclSend.length() > 0) {
+        gEclipseShouldSend = (capEclSend[0] != '0');
+      }
+      WriteEEEclipseConfig(gEclipseMode, gEclipseCadenceS,
+                          gEclipseShouldLog, gEclipseShouldSend);
+      Serial.print(F("[WiFi] Eclipse mode="));
+      Serial.print(gEclipseMode ? F("ON ") : F("OFF"));
+      Serial.print(F(" cadence="));
+      Serial.print(gEclipseCadenceS);
+      Serial.print(F("s log="));
+      Serial.print(gEclipseShouldLog ? F("Y") : F("N"));
+      Serial.print(F(" send="));
+      Serial.println(gEclipseShouldSend ? F("Y") : F("N"));
+      Serial.println(F("[WiFi] ---- Eclipse config done ----\n"));
+    }
+#endif
 
     Serial.print(F("[WiFi] Station persisted: "));
     Serial.println(stationName);

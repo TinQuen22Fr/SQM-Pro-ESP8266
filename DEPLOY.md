@@ -826,7 +826,151 @@ LoRa, etc.), envisagez l'un des leviers ci-dessus.
 
 ---
 
-## 15. Références
+## 16. Mode Éclipse — Procédure d'utilisation (v2.3.14-eclipse)
+
+Cette section documente la procédure complète d'utilisation du **mode éclipse**,
+un mode d'enregistrement haute cadence dédié aux événements astronomiques
+nécessitant une capture fine de la variation de luminosité.
+
+Cas d'usage typique : **éclipse solaire partielle du 12 août 2026**, visible
+sur une grande partie de l'Europe. Le mode est également utilisable pour
+d'autres événements ponctuels (occultations, transits, etc.).
+
+### 16.1 Principe technique
+
+Contrairement au mode normal (push cloud toutes les ~10 s vers
+`magnitude-tracker`, uniquement la nuit si `NIGHT_ONLY_PUSH` est actif), le
+mode éclipse :
+
+- Enregistre **chaque mesure dans un fichier CSV local** (`/eclipse.csv`) en
+  flash NOR persistante (LittleFS), à cadence configurable (5-60 s)
+- **Contourne** le filtre `night-only` : les mesures se font en pleine
+  journée pendant la fenêtre d'événement
+- **Continue à fonctionner sans WiFi** : le CSV local est la source de vérité,
+  le push cloud est un bonus "best-effort"
+- **Tague** les mesures poussées au cloud avec `&mode=eclipse` pour permettre
+  au backend de les distinguer du flux normal
+
+### 16.2 Activation via portail captif
+
+1. Aller à proximité de la sonde
+2. Effectuer un **double reset** (couper 2× l'alimentation en < 5 s)
+3. Se connecter au réseau WiFi `SQM-Setup-XXXXXX` depuis un smartphone
+4. Le portail s'ouvre automatiquement
+5. Descendre jusqu'aux champs "Mode Eclipse" et configurer :
+   - **Mode Eclipse actif** : `1` (activer) ou `0` (désactiver)
+   - **Cadence** : entre `5` et `60` secondes (recommandé : `10`)
+   - **Log local CSV** : `1` (recommandé) ou `0`
+   - **Push cloud aussi** : `1` (recommandé si WiFi dispo) ou `0`
+6. Cliquer **Save**
+7. La sonde reboot et applique la nouvelle config immédiatement
+
+Un indicateur `ECL:<N>` apparaît sur la 8ᵉ ligne de l'OLED, où `N` = nombre
+de lignes déjà enregistrées dans le CSV.
+
+### 16.3 Checklist recommandée pour un événement planifié
+
+| Jour | Action |
+|------|--------|
+| **J-7** | Flasher la version `v2.3.14-eclipse` sur la sonde |
+| **J-7** | Vérifier l'espace flash disponible (`GET /eclipse-status` → `fs_used` << `fs_total`) |
+| **J-7** | Optionnel : effacer un ancien CSV via `GET /eclipse-clear?confirm=YES` |
+| **J-3** | Faire un test de simulation : activer le mode, laisser tourner 30 min, télécharger le CSV, vérifier son intégrité |
+| **J-3** | Repasser en mode OFF pour ne pas polluer le CSV avec du bruit test |
+| **J-1** | Installer la sonde sur le site d'observation, batterie chargée à 100 % |
+| **J-1** | Activer le mode Éclipse via portail captif, vérifier `ECL:0` sur OLED |
+| **J-1** | Vérifier une connexion HTTP au sommaire local : `GET /eclipse-status` doit retourner un JSON avec `"active":true` |
+| **J-0** | Laisser tourner. Ne rien toucher. |
+| **J+1** | Récupérer physiquement la sonde |
+| **J+1** | Brancher sur alimentation stable + réseau WiFi principal |
+| **J+1** | Télécharger le CSV : ouvrir `http://<ip-sonde>/eclipse-log` dans un navigateur (téléchargement automatique) |
+| **J+1** | **Sauvegarder ce fichier sur un ordinateur avant toute autre action** |
+| **J+1** | Une fois le backup effectué, désactiver le mode Éclipse via portail captif |
+| **J+1 ou après** | Optionnellement, effacer le CSV via `GET /eclipse-clear?confirm=YES` pour libérer la flash |
+
+### 16.4 Récupération du CSV — 3 chemins indépendants
+
+**A) Via WiFi (méthode recommandée)**
+
+```
+Navigateur → http://<ip-sonde-locale>/eclipse-log
+```
+
+Le CSV est téléchargé directement avec le bon `Content-Type` et un nom de
+fichier suggéré. Fonctionne si :
+- La sonde est allumée
+- Elle est connectée à ton WiFi principal (celui saisi lors du premier setup)
+- Ton PC/smartphone est sur le même réseau
+
+**B) Via commande UDM série (fallback si WiFi HS)**
+
+Brancher la sonde à un PC par USB, ouvrir un terminal série (Arduino IDE,
+PuTTY, minicom, screen…) à `115200 8N1`, envoyer :
+
+```
+El
+```
+(suivi d'un `x` pour valider, comme les autres commandes UDM)
+
+Le CSV est dumpé entre les marqueurs `---BEGIN eclipse.csv---` et
+`---END eclipse.csv---`. Copier-coller le contenu dans un fichier `.csv`.
+
+**C) Via portail captif (fallback ultime)**
+
+Double reset → portail `SQM-Setup-XXXXXX` → dans le menu, un nouveau lien
+`/eclipse-log` sera accessible tant que le mode éclipse est actif.
+
+### 16.5 Vérification d'intégrité du CSV
+
+Le CSV commence par une ligne d'en-tête :
+
+```csv
+timestamp,session_id,seconds_since_boot,mpsas,dmpsas,lux,ir_raw,full_raw,temperature_c,humidity_pct,pressure_hpa,battery_v
+```
+
+Puis une ligne par mesure. Le champ `session_id` change à chaque reboot de la
+sonde — utile pour détecter d'éventuels redémarrages inattendus pendant
+l'événement.
+
+Une commande rapide pour compter les lignes (Linux/macOS) :
+```bash
+wc -l eclipse.csv
+```
+
+### 16.6 Garanties de persistance (⚠️ IMPORTANT)
+
+| Événement | Impact sur le CSV |
+|---|---|
+| Coupure de courant | ✅ CSV intact (LittleFS crash-safe) |
+| Batterie complètement déchargée | ✅ CSV intact |
+| Reboot logiciel (soft reset) | ✅ CSV intact |
+| Reboot matériel (bouton RST) | ✅ CSV intact |
+| Écriture pendant coupure exacte | Perte de max 5 dernières mesures |
+| Double reset volontaire | ✅ CSV intact |
+| Portail captif rouvert | ✅ CSV intact |
+| **OTA firmware update** | ⚠️ **RISQUE d'effacement** si les partitions changent |
+| **Reflash USB "Erase All"** | ❌ **CSV effacé** |
+| `GET /eclipse-clear?confirm=YES` | ❌ CSV effacé (action volontaire) |
+
+**Consigne critique** : ne pas faire d'OTA ni de reflash USB entre l'événement
+et la récupération/backup du CSV.
+
+### 16.7 Après l'événement
+
+Une fois le CSV backupé sur un ordinateur :
+
+1. Désactiver le mode éclipse via portail captif (`Mode Eclipse actif = 0`)
+2. Optionnellement, effacer le CSV : `GET /eclipse-clear?confirm=YES`
+3. Le firmware reprend son comportement normal (push nuit uniquement, pas
+   d'écriture LittleFS)
+
+Le firmware peut rester en `v2.3.14-eclipse` en permanence — le module
+Eclipse est **inerte tant que le mode est OFF** (juste ~25 kB de code en
+plus dans le binaire, aucun impact runtime).
+
+---
+
+## 17. Références
 
 - API magnitude-tracker : <https://sqm.quentin-astro.fr>
 - Endpoint ingestion : `POST|GET /api/sqm_push`
@@ -835,7 +979,8 @@ LoRa, etc.), envisagez l'un des leviers ci-dessus.
 - TinyGPSPlus : <http://arduiniana.org/libraries/tinygpsplus/>
 - Unihedron SQM-LE serial protocol :
   <http://unihedron.com/projects/sqm-le/commands.html>
+- LittleFS ESP8266 : <https://arduino-esp8266.readthedocs.io/en/latest/filesystem.html>
 
 ---
 
-Copyright © 2025 Quentin Dumont — GPL-3.0.
+Copyright © 2025-2026 Quentin Dumont — GPL-3.0.

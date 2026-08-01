@@ -27,7 +27,7 @@
 
     Wiring diagram / PCB: https://easyeda.com/hujer.roman/sqm-hr
 */
-#define Version       "2.3.13"
+#define Version       "2.3.14"
 #define SERIAL_NUMBER "20200604"
 
 #include "Config.h"
@@ -199,6 +199,10 @@ void setup() {
 #ifdef OTA_ON
   ota_setup();
 #endif
+#ifdef ECLIPSE_MODE_ON
+  // v2.3.14-eclipse — init LittleFS + web server pour endpoints de récup
+  eclipse_setup();
+#endif
 
   DisplWait('#');
 } // end of setup()
@@ -214,6 +218,11 @@ void loop() {
   // le flag DRD ne sera jamais effacé en RTC memory → un simple reboot
   // serait interprété comme un double reset au prochain boot.
   wifiPortal_loop();
+#endif
+#ifdef ECLIPSE_MODE_ON
+  // v2.3.14-eclipse — traite les requêtes HTTP entrantes sur les endpoints
+  // /eclipse-log, /eclipse-status, /eclipse-clear.
+  eclipse_loop();
 #endif
 
 #ifdef DEEP_SLEEP_ON
@@ -297,6 +306,26 @@ void loop() {
     sqm.takeReading();
 
     DisplSqm(sqm.mpsas, sqm.dmpsas, temp, int(hum), int(pres / 100), ':');
+
+#ifdef ECLIPSE_MODE_ON
+    // v2.3.14-eclipse — log local haute cadence de la mesure fraîche.
+    // eclipse_shouldMeasureNow() gère la cadence configurée (5-60s) ; la
+    // fonction skip d'elle-même si le mode est OFF. Récupère lux + raw
+    // channels + battery en même temps pour un CSV auto-suffisant.
+    if (eclipse_shouldMeasureNow()) {
+      float lux_ecl = 0.0f;
+      if (sqm.full > 0 || sqm.ir > 0) {
+        lux_ecl = sqm.calculateLux(sqm.full, sqm.ir);
+        if (lux_ecl < 0) lux_ecl = 0.0f;
+      }
+      float vbat_ecl = getCachedBatteryVoltage();
+      eclipse_logMeasurement(sqm.mpsas, sqm.dmpsas,
+                             lux_ecl,
+                             (uint32_t)sqm.ir, (uint32_t)sqm.full,
+                             temp, hum, pres / 100.0f,
+                             vbat_ecl);
+    }
+#endif
 
 #ifdef WIFI_ON
     if (WiFiConnected) {
@@ -667,8 +696,7 @@ void loop() {
       } else if (command.equals("A50")) {   // disable OLED
         oled[3] = '0';
         OledDisp.setPowerSave(true);
-        Serial.println(oled);
-      } else if (command.equals("A51")) {   // enable OLED
+        Serial.println(oled);      } else if (command.equals("A51")) {   // enable OLED
         oled[3] = '1';
         OledDisp.setPowerSave(false);
         Serial.println(oled);
@@ -683,6 +711,34 @@ void loop() {
       } else if (command.equals("A5")) {    // display status
         oled[4] = (ReadEEAutoContras()) ? '1' : '0';
         Serial.println(oled);
+#ifdef ECLIPSE_MODE_ON
+      // -----------------------------------------------------------------------
+      // v2.3.14-eclipse : commandes UDM custom pour le mode éclipse.
+      // Ces commandes sont EXTENSIONS propres à SQM Pro (ne cassent pas la
+      // compatibilité UDM d'origine, qui ignore les commandes inconnues).
+      //
+      //   El   → dump du CSV /eclipse.csv via le port série (voie de récup
+      //          "fallback USB" si le WiFi ne fonctionne plus)
+      //   Es   → status compact (mode, cadence, lignes, fs_full)
+      // -----------------------------------------------------------------------
+      } else if (command.equals("El")) {
+        eclipse_dumpToSerial();
+      } else if (command.equals("Es")) {
+        extern bool     gEclipseMode;
+        extern uint16_t gEclipseCadenceS;
+        extern bool     gEclipseShouldLog, gEclipseShouldSend;
+        extern uint32_t gEclipseLineCount;
+        extern bool     gEclipseFsMounted, gEclipseFsFull;
+        Serial.print(F("Eclipse{mode="));
+        Serial.print(gEclipseMode ? F("ON") : F("OFF"));
+        Serial.print(F(",cadence="));    Serial.print(gEclipseCadenceS); Serial.print('s');
+        Serial.print(F(",log="));        Serial.print(gEclipseShouldLog  ? 'Y' : 'N');
+        Serial.print(F(",send="));       Serial.print(gEclipseShouldSend ? 'Y' : 'N');
+        Serial.print(F(",lines="));      Serial.print(gEclipseLineCount);
+        Serial.print(F(",fs_mounted=")); Serial.print(gEclipseFsMounted ? 'Y' : 'N');
+        Serial.print(F(",fs_full="));    Serial.print(gEclipseFsFull    ? 'Y' : 'N');
+        Serial.println('}');
+#endif
       }
 
       // Refresh current information on the OLED

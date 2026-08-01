@@ -349,3 +349,61 @@ void WriteEENightOnly(bool enabled) {
   EEPROM.write(EEPROM_NIGHT_ONLY_INDEX_V, enabled ? '1' : '0');
 }
 
+// -----------------------------------------------------------------------------
+// v2.3.14-eclipse — Mode Éclipse (5 champs packés dans un slot compact)
+// -----------------------------------------------------------------------------
+// Slot EEPROM offset 180-190 :
+//   180 : marker 'E' (= config éclipse persistée)
+//   181 : gEclipseMode        (1 byte : '1' ou '0')
+//   182 : gEclipseCadenceS LO (1 byte : low byte de uint16)
+//   183 : gEclipseCadenceS HI (1 byte : high byte de uint16)
+//   184 : gEclipseShouldLog   (1 byte : '1' ou '0')
+//   185 : gEclipseShouldSend  (1 byte : '1' ou '0')
+//   186-190 : réservé
+//
+// Ces 4 valeurs sont configurées via le portail captif (WiFiPortal.ino).
+// Si aucune valeur n'a jamais été persistée, on retombe sur les defaults
+// définis dans Eclipse.ino (mode OFF, cadence 10s, log ON, send ON).
+#define EEPROM_ECLIPSE_INDEX_C           180
+#define EEPROM_ECLIPSE_MODE_V            181
+#define EEPROM_ECLIPSE_CADENCE_LO        182
+#define EEPROM_ECLIPSE_CADENCE_HI        183
+#define EEPROM_ECLIPSE_SHOULD_LOG_V      184
+#define EEPROM_ECLIPSE_SHOULD_SEND_V     185
+
+#ifdef ECLIPSE_MODE_ON
+// Retourne true si une config a été trouvée en EEPROM ; false sinon (l'appelant
+// garde ses defaults). Les paramètres out reçoivent les valeurs relues.
+bool ReadEEEclipseConfig(bool* outMode, uint16_t* outCadenceS,
+                        bool* outShouldLog, bool* outShouldSend) {
+  if (EEPROM.read(EEPROM_ECLIPSE_INDEX_C) != 'E') {
+    return false;  // jamais persisté
+  }
+  if (outMode) {
+    *outMode = (EEPROM.read(EEPROM_ECLIPSE_MODE_V) == '1');
+  }
+  if (outCadenceS) {
+    uint16_t lo = EEPROM.read(EEPROM_ECLIPSE_CADENCE_LO);
+    uint16_t hi = EEPROM.read(EEPROM_ECLIPSE_CADENCE_HI);
+    *outCadenceS = (uint16_t)((hi << 8) | lo);
+  }
+  if (outShouldLog) {
+    *outShouldLog = (EEPROM.read(EEPROM_ECLIPSE_SHOULD_LOG_V) == '1');
+  }
+  if (outShouldSend) {
+    *outShouldSend = (EEPROM.read(EEPROM_ECLIPSE_SHOULD_SEND_V) == '1');
+  }
+  return true;
+}
+
+void WriteEEEclipseConfig(bool mode, uint16_t cadenceS,
+                         bool shouldLog, bool shouldSend) {
+  EEPROM.write(EEPROM_ECLIPSE_INDEX_C, 'E');
+  EEPROM.write(EEPROM_ECLIPSE_MODE_V,        mode ? '1' : '0');
+  EEPROM.write(EEPROM_ECLIPSE_CADENCE_LO,    (uint8_t)(cadenceS & 0xFF));
+  EEPROM.write(EEPROM_ECLIPSE_CADENCE_HI,    (uint8_t)((cadenceS >> 8) & 0xFF));
+  EEPROM.write(EEPROM_ECLIPSE_SHOULD_LOG_V,  shouldLog ? '1' : '0');
+  EEPROM.write(EEPROM_ECLIPSE_SHOULD_SEND_V, shouldSend ? '1' : '0');
+}
+#endif // ECLIPSE_MODE_ON
+
