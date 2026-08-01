@@ -101,8 +101,14 @@
 #define WIFI_ON
 
 // Backend endpoint (HTTPS is mandatory: the server redirects HTTP -> HTTPS)
-const char* host = "sqm.quentin-astro.fr";
-String app = "/api/sqm_push";
+// NOTE (v2.3.14-eclipse fix): 'static' ici est indispensable — Config.h est
+// maintenant inclus depuis 2 unités de compilation différentes (le sketch
+// principal SQM_pro.ino.cpp ET la lib SQM_TSL2591.cpp depuis v2.3.13), et
+// sans 'static' ces variables globales généreraient un "multiple definition"
+// au link. 'static' leur donne un linkage interne (une copie par .cpp,
+// négligeable en RAM, ~10 octets par variable).
+static const char* host = "sqm.quentin-astro.fr";
+static String app = "/api/sqm_push";
 #define HTTP_PORT 443
 
 // WiFi credentials : SAISIS PAR L'UTILISATEUR via le portail captif
@@ -122,7 +128,7 @@ String app = "/api/sqm_push";
 // du projet coopératif : c'est le "passe-partout" vers le serveur central
 // (sqm.quentin-astro.fr). Elle est injectée dans secrets.h par la CI GitHub
 // depuis le secret de dépôt `SENSOR_KEY`.
-const char* sensor_key = SENSOR_KEY;
+static const char* sensor_key = SENSOR_KEY;
 
 // -----------------------------------------------------------------------------
 // Night-only push (skip daytime measurements)
@@ -160,11 +166,11 @@ const char* sensor_key = SENSOR_KEY;
 // Hostname advertised on the local network (mDNS / Bonjour).
 // Set a unique value per physical device, e.g. "sqm-pro-001", "sqm-pro-002".
 // The actual value comes from secrets.h (OTA_HOSTNAME).
-const char* ota_hostname = OTA_HOSTNAME;
+static const char* ota_hostname = OTA_HOSTNAME;
 
 // Password required by Arduino IDE before pushing a new firmware over OTA.
 // CHANGE THIS to a secret value in secrets.h before flashing!
-const char* ota_password = OTA_PASSWORD;
+static const char* ota_password = OTA_PASSWORD;
 
 // -----------------------------------------------------------------------------
 // Deep-sleep (battery-powered, low-power operation)
