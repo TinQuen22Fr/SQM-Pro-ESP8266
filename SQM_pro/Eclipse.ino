@@ -257,9 +257,11 @@ void eclipse_setup() {
 // -----------------------------------------------------------------------------
 void eclipse_startWebServer() {
   if (eclipseServer != nullptr) return;  // déjà démarré
-  extern bool gWifiPortalOk;
-  if (!gWifiPortalOk) {
-    Serial.println(F("[Eclipse] WiFi not connected, web server not started."));
+  // v2.3.14.1 : on se base directement sur WiFi.status() (source de vérité
+  // du core ESP8266) plutôt que sur gWifiPortalOk qui n'est mis à jour
+  // qu'après setup(). Permet un lazy start correct depuis eclipse_loop().
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println(F("[Eclipse] WiFi not connected yet, web server pending."));
     return;
   }
 
@@ -416,10 +418,20 @@ bool eclipse_shouldMeasureNow() {
 
 // -----------------------------------------------------------------------------
 // eclipse_loop() — appelée à chaque itération de loop(). Fait tourner le
-// web server et rien d'autre (la logique de mesure est pilotée par la boucle
-// principale via eclipse_shouldMeasureNow()).
+// web server et tente un démarrage tardif (lazy start) si le WiFi n'était
+// pas encore connecté au moment de eclipse_setup().
 // -----------------------------------------------------------------------------
 void eclipse_loop() {
+  // v2.3.14.1 : lazy start du web server. setup() est appelé AVANT que
+  // WiFi soit effectivement connecté (le WiFiManager confirme juste la
+  // config, la connexion réelle se fait plus tard). On tente donc de
+  // démarrer le web server dès qu'on détecte le WiFi UP, et seulement
+  // si le mode Eclipse est actif ET LittleFS ok.
+  if (gEclipseMode && gEclipseFsMounted && eclipseServer == nullptr) {
+    if (WiFi.status() == WL_CONNECTED) {
+      eclipse_startWebServer();
+    }
+  }
   if (eclipseServer) {
     eclipseServer->handleClient();
   }

@@ -398,6 +398,23 @@ void DisplSqm(double mpsas, double dmpsas, float temp, byte hum, int pres, char 
       OledDisp.print("  ");
     }
   }
+#ifdef ECLIPSE_MODE_ON
+  // v2.3.14.1 — indicateur de progression du log éclipse.
+  // Placé ICI, EN FIN DE DisplSqm() (appelée à chaque cycle du loop), pour
+  // ne PAS être écrasé par les autres blocs d'affichage. Écrase la ligne 7
+  // (Lon GPS) quand le mode est actif — perte acceptable car les infos GPS
+  // essentielles (Alt, Sat, Lat) restent sur les lignes 5-6.
+  {
+    extern bool eclipse_isActive();
+    extern uint32_t gEclipseLineCount;
+    if (eclipse_isActive()) {
+      OledDisp.setCursor(0, 7);
+      OledDisp.print("ECL:");
+      OledDisp.print(gEclipseLineCount);
+      OledDisp.print("           ");  // trailing pad to clear leftovers
+    }
+  }
+#endif
   _blk_change_status();
 }
 
@@ -466,19 +483,6 @@ void DisplWait(char blk) {
     OledDisp.print(WiFi.localIP());
   } else {
     OledDisp.print("Not connect!    ");
-  }
-#endif
-#ifdef ECLIPSE_MODE_ON
-  // v2.3.14-eclipse — indicateur discret en bas de l'écran quand le mode
-  // éclipse est actif. Affiche "ECL:<nombre_lignes>" pour que l'utilisateur
-  // voie en un coup d'œil que l'enregistrement local tourne.
-  extern bool eclipse_isActive();
-  extern uint32_t gEclipseLineCount;
-  if (eclipse_isActive()) {
-    OledDisp.setCursor(0, 7);
-    OledDisp.print("ECL:");
-    OledDisp.print(gEclipseLineCount);
-    OledDisp.print("      ");  // efface les eventuels chiffres restants
   }
 #endif
 }
