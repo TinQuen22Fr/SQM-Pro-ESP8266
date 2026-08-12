@@ -5,6 +5,58 @@ Tous les changements notables de ce projet sont documentés dans ce fichier.
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ;
 le projet suit le [versionnage sémantique](https://semver.org/lang/fr/).
 
+## [v2.3.14.3-eclipse-hotfix] — 2026-08-13 (branche `wifimanager_eclipse_mode`)
+
+### 🚑 Hotfix post-mortem éclipse du 12 août 2026
+
+Correctif urgent de deux bugs critiques observés en production lors de
+l'éclipse solaire du 12 août 2026 :
+
+1. **Log local LittleFS s'arrêtait définitivement à 16:21:06Z** alors que le
+   fichier ne faisait que ~65 kB et qu'il restait ~490 kB libres sur la
+   partition. Cause : le flag `gEclipseFsFull` était **latché à `true`** de
+   façon permanente dès le premier pic transitoire de `usedBytes` remonté
+   par `LittleFS.info()` (overhead de métadonnées / garbage collect en cours).
+   Le seuil de sécurité de 8 kB était trop conservateur.
+
+2. **Web server injoignable sur port 80** (`/eclipse-status`, `/eclipse-log`
+   timeout). Deux causes cumulées :
+   - Double appel à `new ESP8266WebServer(...)` dans `eclipse_startWebServer()`
+     qui écrasait le pointeur (fuite mémoire ~2 kB + handler `/` orphelin).
+   - `handleClient()` starvé : appelé une seule fois par cycle `loop()`,
+     soit toutes les ~8 secondes (6 s d'intégration TSL2591 + `delay(2000)`),
+     bien au-delà du timeout par défaut des navigateurs (5-10 s) et de curl.
+
+### Corrigé
+
+- **Eclipse.ino** — `eclipse_checkFsSpace()` : flag `gEclipseFsFull` désormais
+  **non-latché** (réévalué à chaque cycle), seuil abaissé de 8 kB à 4 kB
+  (1 bloc LittleFS). Si l'espace se libère, l'écriture reprend automatiquement.
+- **Eclipse.ino** — `eclipse_startWebServer()` : suppression du `new` en
+  doublon qui fuitait le premier `ESP8266WebServer` et perdait le handler `/`.
+- **Eclipse.ino** — `eclipse_logMeasurement()` : garde heap (skip écriture si
+  `ESP.getFreeHeap() < 6144` pour protéger le handshake TLS BearSSL du push
+  HTTPS, qui est la seule redondance qui a fonctionné pendant l'éclipse).
+- **Eclipse.ino** — Ajout de `eclipse_pumpHttp()` et `eclipse_delayPumped(ms)`
+  pour maintenir `handleClient()` réactif pendant les longs `delay()`.
+- **SQM_pro.ino** — Le `delay(2000)` du main loop est remplacé par
+  `eclipse_delayPumped(2000)` quand `ECLIPSE_MODE_ON` est défini. Le web
+  server répond désormais toutes les 50 ms au lieu de toutes les 8 s.
+
+### Ajouté — Diagnostics permanents
+
+Le JSON `/eclipse-status` expose désormais :
+
+- `open_failures` : nombre cumulé d'échecs de `LittleFS.open("a")`
+- `write_skipped` : nombre de skips (heap trop bas ou FS plein)
+- `last_fail` : cause du dernier skip (`fs_low`, `heap_low`, `open_failed`, `fs_full`)
+- `free_heap` : heap libre en octets (ESP.getFreeHeap())
+- `fs_free` : octets réellement libres sur LittleFS
+- `session_id`, `uptime_s`
+
+**Objectif** : plus jamais de log qui s'arrête sans qu'on sache pourquoi.
+
+
 ## [v2.3.14-eclipse] — 2026-06-14 (branche `wifimanager_eclipse_mode`)
 
 ### 🌒 Nouveau : Mode Éclipse pour événement astronomique du 12 août 2026

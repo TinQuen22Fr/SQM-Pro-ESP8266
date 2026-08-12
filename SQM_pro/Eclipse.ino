@@ -111,8 +111,15 @@ bool     gEclipseShouldSend  = true;    // pousser vers magnitude-tracker
 uint32_t gEclipseLineCount   = 0;       // nb lignes écrites dans le CSV
 uint32_t gEclipseLastMeasMs  = 0;       // dernière mesure (millis)
 bool     gEclipseFsMounted   = false;   // LittleFS OK ?
-bool     gEclipseFsFull      = false;   // FS plein → arrêt écriture
+bool     gEclipseFsFull      = false;   // FS plein → arrêt écriture (non-latché depuis v2.3.14.3)
 uint16_t gEclipseSessionId   = 0;       // ID de session (bump à chaque boot)
+
+// v2.3.14.3 — compteurs de diagnostic exposés dans /eclipse-status.
+// Servent à comprendre POURQUOI les écritures se sont arrêtées lors de
+// la production éclipse 12 août 2026 (arrêt à 16:21:06Z).
+uint32_t    gEclipseOpenFailures = 0;   // nb d'échecs LittleFS.open("a")
+uint32_t    gEclipseWriteSkipped = 0;   // nb de skips (heap bas / fs plein)
+const char* gEclipseLastFail     = "";  // raison du dernier skip
 
 // Web server dédié aux endpoints eclipse. On ne réutilise pas celui du
 // portail captif (WiFiManager) qui n'est actif que pendant la config.
@@ -150,19 +157,49 @@ static String eclipse_buildTimestamp() {
   return String(buf);
 }
 
-// Vérifie l'espace flash restant. Passe le FS en "read only" si presque plein.
+// Vérifie l'espace flash restant. Passe le FS en "pause" temporaire si presque plein.
+//
+// v2.3.14.3 — CORRECTIF POST-MORTEM ÉCLIPSE 12/08/2026 :
+// ------------------------------------------------------------------
+// L'ancienne version LATCHAIT le flag `gEclipseFsFull` à `true` de
+// façon PERMANENTE dès que `LittleFS.info()` rapportait moins de 8 kB
+// libres. Or `usedBytes` inclut l'overhead des métadonnées LittleFS
+// et peut faire des pics transitoires pendant le garbage collect.
+// Résultat en production : écritures arrêtées définitivement à
+// 16:21:06Z alors qu'il restait ~490 kB libres sur la partition.
+//
+// Nouveau comportement :
+//   - Flag NON-latché : réévalué à chaque appel (donc à chaque cycle
+//     de 5 lignes) → si l'espace se libère (GC), on reprend.
+//   - Seuil abaissé à 4 kB = 1 bloc LittleFS = marge suffisante pour
+//     écrire au moins une ligne CSV (~120 bytes) sans risque.
+//   - Log clair quand on entre/sort de l'état "fs plein".
+// ------------------------------------------------------------------
 static void eclipse_checkFsSpace() {
   if (!gEclipseFsMounted) return;
   FSInfo info;
-  if (!LittleFS.info(info)) return;
-  // Marge de sécurité : on arrête d'écrire si moins de 8 kB libres
+  if (!LittleFS.info(info)) {
+    // Info FS indispo -> on ne DÉCIDE PAS d'arrêter les écritures sur
+    // un doute. LittleFS.open("a") remontera lui-même l'erreur si le
+    // FS est vraiment cassé, et le compteur gEclipseOpenFailures
+    // permettra de le diagnostiquer via /eclipse-status.
+    return;
+  }
   size_t freeSpace = (info.totalBytes > info.usedBytes)
                      ? (info.totalBytes - info.usedBytes) : 0;
-  if (freeSpace < 8192) {
-    if (!gEclipseFsFull) {
-      Serial.println(F("[Eclipse] LittleFS almost full, stopping writes."));
-    }
-    gEclipseFsFull = true;
+
+  bool wasFull = gEclipseFsFull;
+  gEclipseFsFull = (freeSpace < 4096);   // 1 bloc LittleFS
+
+  if (gEclipseFsFull && !wasFull) {
+    Serial.print(F("[Eclipse] FS space low ("));
+    Serial.print((unsigned)freeSpace);
+    Serial.println(F(" B free), pausing local writes."));
+    gEclipseLastFail = "fs_low";
+  } else if (!gEclipseFsFull && wasFull) {
+    Serial.print(F("[Eclipse] FS space recovered ("));
+    Serial.print((unsigned)freeSpace);
+    Serial.println(F(" B free), resuming local writes."));
   }
 }
 
@@ -256,16 +293,49 @@ void eclipse_setup() {
 // activation via portail.
 // -----------------------------------------------------------------------------
 void eclipse_startWebServer() {
-  if (eclipseServer != nullptr) return;  // déjà démarré
+  if (eclipseServer != nullptr) {
+    Serial.println(F("[Eclipse] Web server already running."));
+    return;
+  }
   // v2.3.14.1 : on se base directement sur WiFi.status() (source de vérité
   // du core ESP8266) plutôt que sur gWifiPortalOk qui n'est mis à jour
   // qu'après setup(). Permet un lazy start correct depuis eclipse_loop().
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println(F("[Eclipse] WiFi not connected yet, web server pending."));
+    // Silencieux ici — eclipse_loop() re-tente à chaque cycle jusqu'à réussite.
     return;
   }
 
+  Serial.print(F("[Eclipse] Starting web server on port "));
+  Serial.print(ECLIPSE_WEB_PORT);
+  Serial.print(F(" IP="));
+  Serial.println(WiFi.localIP());
+
   eclipseServer = new ESP8266WebServer(ECLIPSE_WEB_PORT);
+  if (eclipseServer == nullptr) {
+    Serial.println(F("[Eclipse] FATAL: new ESP8266WebServer() returned null "
+                     "(out of memory?)"));
+    return;
+  }
+
+  // v2.3.14.3 : endpoint racine "/" pour test de connectivité de base.
+  // Utile pour diagnostiquer les problèmes de firewall/browser sans
+  // dépendre de LittleFS ou d'autres endpoints plus complexes.
+  eclipseServer->on("/", HTTP_GET, []() {
+    String body = F("SQM Pro Eclipse Mode - Web server OK\n\n"
+                    "Endpoints:\n"
+                    "  GET /eclipse-status                 - JSON status\n"
+                    "  GET /eclipse-log                    - Download CSV\n"
+                    "  GET /eclipse-clear?confirm=YES      - Clear CSV\n\n"
+                    "Serial fallback (via UDM/USB):\n"
+                    "  Es   - status\n"
+                    "  El   - dump CSV via serial\n");
+    eclipseServer->send(200, "text/plain", body);
+  });
+
+  // v2.3.14.3 — SUPPRESSION du double `new ESP8266WebServer(...)` qui
+  // écrasait le pointeur (fuite mémoire ~2 kB + handler "/" orphelin).
+  // Sur un ESP8266 déjà chargé par le HTTPS BearSSL, cette fuite pouvait
+  // suffire à faire échouer les accept() TCP sur le port 80.
 
   // GET /eclipse-log → dump le CSV
   eclipseServer->on("/eclipse-log", HTTP_GET, []() {
@@ -295,11 +365,20 @@ void eclipse_startWebServer() {
     j += ",\"lines\":";        j += gEclipseLineCount;
     j += ",\"fs_mounted\":";   j += (gEclipseFsMounted ? "true" : "false");
     j += ",\"fs_full\":";      j += (gEclipseFsFull ? "true" : "false");
+    // v2.3.14.3 — Diagnostics post-mortem éclipse 12/08/2026
+    j += ",\"open_failures\":";j += gEclipseOpenFailures;
+    j += ",\"write_skipped\":";j += gEclipseWriteSkipped;
+    j += ",\"last_fail\":\"";  j += gEclipseLastFail; j += "\"";
+    j += ",\"free_heap\":";    j += ESP.getFreeHeap();
+    j += ",\"session_id\":";   j += gEclipseSessionId;
+    j += ",\"uptime_s\":";     j += (unsigned long)(millis() / 1000UL);
     if (gEclipseFsMounted) {
       FSInfo info;
       if (LittleFS.info(info)) {
         j += ",\"fs_total\":"; j += info.totalBytes;
         j += ",\"fs_used\":";  j += info.usedBytes;
+        j += ",\"fs_free\":";  j += (info.totalBytes > info.usedBytes)
+                                     ? (info.totalBytes - info.usedBytes) : 0;
       }
     }
     j += "}";
@@ -361,7 +440,39 @@ void eclipse_logMeasurement(float mpsas, float dmpsas,
   if (!gEclipseMode) return;
 
   // ---- Écriture locale CSV ----
-  if (gEclipseShouldLog && gEclipseFsMounted && !gEclipseFsFull) {
+  //
+  // v2.3.14.3 — Robustesse post-mortem éclipse 12/08/2026 :
+  //   1. On réévalue eclipse_checkFsSpace() À CHAQUE APPEL (pas juste
+  //      toutes les 5 lignes). Combiné au flag non-latché, ça garantit
+  //      que le flag `gEclipseFsFull` reflète l'état RÉEL de la flash.
+  //   2. Garde heap : si moins de 6 kB libres, on skip cette écriture
+  //      pour PROTÉGER le push HTTPS BearSSL (qui a besoin de ~16 kB
+  //      pour un handshake TLS). Priorité au push cloud puisque c'est
+  //      lui qui a sauvé les données pendant l'éclipse.
+  //   3. Diagnostics : on incrémente gEclipseOpenFailures et on stocke
+  //      la raison exacte dans gEclipseLastFail, exposée via
+  //      /eclipse-status → plus jamais de "log qui s'arrête sans qu'on
+  //      sache pourquoi".
+  if (gEclipseShouldLog && gEclipseFsMounted) {
+    eclipse_checkFsSpace();  // ré-évaluation live (non-latché)
+
+    if (gEclipseFsFull) {
+      gEclipseWriteSkipped++;
+      gEclipseLastFail = "fs_full";
+      return;
+    }
+
+    uint32_t heap = ESP.getFreeHeap();
+    if (heap < 6144) {
+      gEclipseWriteSkipped++;
+      gEclipseLastFail = "heap_low";
+#ifdef DEBUG_ECLIPSE_ON
+      Serial.print(F("[Eclipse] SKIP write, heap="));
+      Serial.println(heap);
+#endif
+      return;
+    }
+
     bool needsHeader = !LittleFS.exists(ECLIPSE_CSV_PATH);
     File f = LittleFS.open(ECLIPSE_CSV_PATH, "a");
     if (f) {
@@ -394,12 +505,20 @@ void eclipse_logMeasurement(float mpsas, float dmpsas,
         eclipseUnsyncedLines = 0;
         eclipse_checkFsSpace();  // check disk space every N lines
 #ifdef DEBUG_ECLIPSE_ON
-        Serial.print(F("[Eclipse] Flushed CSV, total lines="));
-        Serial.println(gEclipseLineCount);
+        Serial.print(F("[Eclipse] Flushed CSV, lines="));
+        Serial.print(gEclipseLineCount);
+        Serial.print(F(" heap="));
+        Serial.println(ESP.getFreeHeap());
 #endif
       }
     } else {
-      Serial.println(F("[Eclipse] WARN: could not open CSV for append"));
+      // v2.3.14.3 — Diagnostic détaillé + compteur d'échecs.
+      gEclipseOpenFailures++;
+      gEclipseLastFail = "open_failed";
+      Serial.print(F("[Eclipse] WARN: LittleFS.open(\"a\") failed, heap="));
+      Serial.print(heap);
+      Serial.print(F(" total_failures="));
+      Serial.println(gEclipseOpenFailures);
     }
   }
 
@@ -434,6 +553,42 @@ void eclipse_loop() {
   }
   if (eclipseServer) {
     eclipseServer->handleClient();
+  }
+}
+
+// -----------------------------------------------------------------------------
+// eclipse_pumpHttp() — v2.3.14.3
+// Version "lite" de eclipse_loop() destinée à être appelée depuis les
+// endroits où loop() ne tourne pas (ex: delay(2000) du main loop, ou
+// pendant les 6 s d'intégration TSL2591). Ne fait QUE handleClient(),
+// sans tenter de lazy-start le server. Non-bloquant. Sûr à appeler en
+// masse.
+//
+// Pourquoi ? Pendant l'éclipse du 12/08/2026, `handleClient()` n'était
+// appelé qu'une fois par cycle loop(), soit ~toutes les 8 secondes
+// (6 s d'intégration TSL + 2 s de delay). Résultat : les navigateurs et
+// curl timeoutaient (défaut 5-10 s) avant que le serveur ne réponde.
+// -----------------------------------------------------------------------------
+void eclipse_pumpHttp() {
+  if (eclipseServer) {
+    eclipseServer->handleClient();
+  }
+}
+
+// -----------------------------------------------------------------------------
+// eclipse_delayPumped(ms) — v2.3.14.3
+// Remplacement direct de `delay(ms)` qui appelle handleClient() toutes
+// les ~50 ms. À utiliser dans le main loop à la place du `delay(2000)`
+// pour maintenir le web server réactif entre deux mesures.
+// -----------------------------------------------------------------------------
+void eclipse_delayPumped(uint32_t total_ms) {
+  const uint32_t chunk = 50;   // ms
+  uint32_t elapsed = 0;
+  while (elapsed < total_ms) {
+    uint32_t step = (total_ms - elapsed) < chunk ? (total_ms - elapsed) : chunk;
+    delay(step);
+    eclipse_pumpHttp();
+    elapsed += step;
   }
 }
 

@@ -27,7 +27,7 @@
 
     Wiring diagram / PCB: https://easyeda.com/hujer.roman/sqm-hr
 */
-#define Version       "2.3.14"
+#define Version       "2.3.14.3"
 #define SERIAL_NUMBER "20200604"
 
 #include "Config.h"
@@ -335,7 +335,17 @@ void loop() {
     } else {
       wifi_setup();
     }
+    // v2.3.14.3 — le `delay(2000)` d'origine starvait `handleClient()` du
+    // web server Eclipse, ce qui faisait timeouter les requêtes sur
+    // /eclipse-status et /eclipse-log pendant l'éclipse du 12/08/2026.
+    // On utilise maintenant un delay "pompé" qui appelle handleClient()
+    // toutes les 50 ms si le mode Eclipse est actif.
+  #ifdef ECLIPSE_MODE_ON
+    extern void eclipse_delayPumped(uint32_t);
+    eclipse_delayPumped(2000);
+  #else
     delay(2000);
+  #endif
 #endif
   } else {
     // -------------------------------------------------------------------------
