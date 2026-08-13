@@ -23,7 +23,7 @@ name: Build Firmware (ESP8266)
 
 on:
   push:
-    branches: [ main, wifimanager ]
+    branches: [ main, wifimanager, wifimanager_eclipse_mode ]
     paths:
       - '**.ino'
       - '**.h'
